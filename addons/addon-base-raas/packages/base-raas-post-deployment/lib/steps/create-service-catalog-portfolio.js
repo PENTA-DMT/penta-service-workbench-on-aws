@@ -56,6 +56,16 @@ const productsToCreate = [
     displayName: 'EC2 Windows',
     description: `* An EC2 Windows instance with RDP access \n* Secure compute in the cloud`,
   },
+  {
+    filename: 'appstream-stata-instance',
+    displayName: 'Latest AppStream2 Instance with study support via session scripts',
+    description: `* An AppStream2.0 Elastic App with Stata17 \n* Secure compute in the cloud`,
+  },
+  {
+    filename: 'appstream-sata-instance-dynamic-url',
+    displayName: 'Latest AppStream2 Instance with dynamic url',
+    description: `* An AppStream2.0 Elastic App with Stata17 \n* Secure compute in the cloud`,
+  }
 ];
 
 const autoCreateVersion = 'v1';

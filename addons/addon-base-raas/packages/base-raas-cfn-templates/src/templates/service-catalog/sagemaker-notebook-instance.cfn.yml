@@ -47,6 +47,14 @@ Parameters:
     Type: String
     Description: Boolean for whether workspace should be accessed with AppStream
     AllowedValues: [true, false]
+  VolumeSize:
+    Type: Number
+    Description: The size of the EBS volume to be attached to the notebook instance
+    Default: 10
+  PythonVersion:
+    Type: String
+    Description: The version of Python to use
+    Default: "3.9"
 
 Conditions:
   IamPolicyEmpty: !Equals [!Ref IamPolicyDocument, '{}']
@@ -269,14 +277,96 @@ Resources:
       LifecycleConfigName: !GetAtt BasicNotebookInstanceLifecycleConfig.NotebookInstanceLifecycleConfigName
       KmsKeyId: !Ref EncryptionKeyArn
       PlatformIdentifier: 'notebook-al2-v1'
+      VolumeSizeInGB: !Ref VolumeSize
 
   BasicNotebookInstanceLifecycleConfig:
     Type: 'AWS::SageMaker::NotebookInstanceLifecycleConfig'
     Properties:
+      OnCreate:
+        - Content:
+            Fn::Base64: !Sub |
+              #!/bin/bash
+
+              set -e
+              
+              # OVERVIEW
+              # This script installs a custom, persistent installation of conda on the Notebook Instance's EBS volume, and ensures
+              # that these custom environments are available as kernels in Jupyter.
+              # 
+              # The on-create script downloads and installs a custom conda installation to the EBS volume via Miniconda. Any relevant
+              # packages can be installed here.
+              #   1. ipykernel is installed to ensure that the custom environment can be used as a Jupyter kernel   
+              #   2. Ensure the Notebook Instance has internet connectivity to download the Miniconda installer
+              
+              
+              sudo -u ec2-user -i <<'EOF'
+              unset SUDO_UID
+              
+              # Install a separate conda installation via Miniconda
+              WORKING_DIR=/home/ec2-user/SageMaker/custom-miniconda
+              mkdir -p "$WORKING_DIR"
+              wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O "$WORKING_DIR/miniconda.sh"
+              bash "$WORKING_DIR/miniconda.sh" -b -u -p "$WORKING_DIR/miniconda" 
+              rm -rf "$WORKING_DIR/miniconda.sh"
+              
+              
+              # Create a custom conda environment
+              source "$WORKING_DIR/miniconda/bin/activate"
+              KERNEL_NAME="PERSISTENT_KERNEL"
+              PYTHON="${PythonVersion}"
+              
+              conda create --yes --name "$KERNEL_NAME" python="$PYTHON"
+              conda activate "$KERNEL_NAME"
+              
+              pip install --quiet ipykernel
+              
+              # Customize these lines as necessary to install the required packages
+              # conda install --yes numpy
+              # pip install --quiet boto3
+              
+              EOF
       OnStart:
         - Content:
             Fn::Base64: !Sub |
               #!/usr/bin/env bash
+              set -e
+
+              # OVERVIEW
+              # This script installs a custom, persistent installation of conda on the Notebook Instance's EBS volume, and ensures
+              # that these custom environments are available as kernels in Jupyter.
+              # 
+              # The on-start script uses the custom conda environment created in the on-create script and uses the ipykernel package
+              # to add that as a kernel in Jupyter.
+              #
+              # For another example, see:
+              # https://docs.aws.amazon.com/sagemaker/latest/dg/nbi-add-external.html#nbi-isolated-environment
+              
+              sudo -u ec2-user -i <<'EOF'
+              unset SUDO_UID
+              
+              WORKING_DIR=/home/ec2-user/SageMaker/custom-miniconda
+              source "$WORKING_DIR/miniconda/bin/activate"
+              
+              for env in $WORKING_DIR/miniconda/envs/*; do
+                  BASENAME=$(basename "$env")
+                  source activate "$BASENAME"
+                  python -m ipykernel install --user --name "$BASENAME" --display-name "Custom ($BASENAME)"
+              done
+              
+              # Optionally, uncomment these lines to disable SageMaker-provided Conda functionality.
+              # echo "c.EnvironmentKernelSpecManager.use_conda_directly = False" >> /home/ec2-user/.jupyter/jupyter_notebook_config.py
+              # rm /home/ec2-user/.condarc
+              EOF
+              
+              echo "Restarting the Jupyter server.."
+              # restart command is dependent on current running Amazon Linux and JupyterLab
+              CURR_VERSION=$(cat /etc/os-release)
+              if [[ $CURR_VERSION == *$"http://aws.amazon.com/amazon-linux-ami/"* ]]; then
+              	sudo initctl restart jupyter-server --no-wait
+              else
+              	sudo systemctl --no-block restart jupyter-server.service
+              fi
+              
               set -e
               TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
               REGION=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/dynamic/instance-identity/document | grep region | awk -F\" '{print $4}')
