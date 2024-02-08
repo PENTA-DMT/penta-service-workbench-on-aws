@@ -232,8 +232,8 @@ Resources:
                 resources=''
                 prefixes = ''
                 for study in read_studies+readwrite_studies:
-                    resources += f"arn:aws:s3:::{study["bucket"]},"
-                    prefixes += f"{study["prefix"]}*,"
+                    resources += f"arn:aws:s3:::{study['bucket']},"
+                    prefixes += f"{study['prefix']}*,"
                 resources = resources[:-1]
                 prefixes = prefixes[:-1]
 
@@ -255,29 +255,6 @@ Resources:
                                 ]
                             }}
                         }}
-                    }},
-                    {{
-                        "Condition": {{
-                            "StringNotEquals": {{
-                                "aws:SourceVpce": "vpce-05d91d65eeb16581b"
-                            }},
-                            "StringLike": {{
-                                "s3:prefix": [
-                                    "VERDI-mpox/*"
-                                ]
-                            }}
-                        }},
-                        "Action": [
-                            "s3:Get*",
-                            "s3:List*",
-                            "s3:Put*",
-                            "s3:Delete*",
-                            "s3:AbortMultipartUpload",
-                            "s3:ListMultipartUploadParts"
-                        ],
-                        "Resource": "arn:aws:s3:::data-warehouse-01ed83e4-5663-4477-9c52-bc33f9ba3d6f",
-                        "Effect": "Deny",
-                        "Sid": "AllowAccessFrom05d91d65eeb16581b"
                     }}
                 ]
             }}
