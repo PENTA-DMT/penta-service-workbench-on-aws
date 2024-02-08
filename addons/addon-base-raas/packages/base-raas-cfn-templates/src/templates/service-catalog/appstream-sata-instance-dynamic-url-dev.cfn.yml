@@ -233,7 +233,7 @@ Resources:
                 prefixes = ''
                 for study in read_studies+readwrite_studies:
                     resources += f'"arn:aws:s3:::{study['bucket']}",'
-                    prefixes += f'"{study['prefix']}*",'
+                    prefixes += f'"{study["prefix"]}*",'
                 resources = resources[:-1]
                 prefixes = prefixes[:-1]
 
@@ -273,7 +273,7 @@ Resources:
               cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
               return
       Role: !GetAtt BasicLambdaRole.Arn
-      Runtime: python3.9
+      Runtime: python3.12
       Handler: index.lambda_handler
       Timeout: 30
 
@@ -383,7 +383,7 @@ Resources:
               cfnresponse.send(event, context, cfnresponse.FAILED, responseData, )
               return
       Role: !GetAtt CreateStudySessionScriptRole.Arn
-      Runtime: python3.9
+      Runtime: python3.12
       Handler: index.lambda_handler
       Timeout: 30
 
@@ -486,7 +486,7 @@ Resources:
               cfnresponse.send(event, context, cfnresponse.FAILED, responseData, )
               return
       Role: !GetAtt CreateStudySessionScriptRole.Arn
-      Runtime: python3.9
+      Runtime: python3.12
       Handler: index.lambda_handler
       Timeout: 30
 
@@ -708,7 +708,7 @@ Resources:
               cfnresponse.send(event, context, cfnresponse.FAILED, responseData, )
               return
       Role: !GetAtt AssociationFunctionRole.Arn
-      Runtime: python3.9
+      Runtime: python3.12
       Handler: index.lambda_handler
       Timeout: 30
 
@@ -801,7 +801,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       Role: !GetAtt GetStreamingUrlRole.Arn
-      Runtime: python3.9
+      Runtime: python3.12
       Handler: index.lambda_handler
       Timeout: 30
       Code:
