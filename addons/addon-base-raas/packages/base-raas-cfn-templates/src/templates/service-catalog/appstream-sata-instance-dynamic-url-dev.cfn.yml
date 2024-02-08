@@ -168,10 +168,126 @@ Resources:
             s3_mounts_str = '${S3Mounts}'
             try:
               s3_mounts = json.loads(s3_mounts_str)
+
+              # find read only and readwrite external studies
+              read_studies = [study for study in s3_mounts if study['roleArn'] and not study['writeable']]
+              readwrite_studies = [study for study in s3_mounts if study['roleArn'] and study['writeable']]
+
+              # build the policy document
+              if read_studies or readwrite_studies:
+                external_study_policy = f"""
+            {{
+                "Version": "2012-10-17",
+                "Statement": [
+                """
+                if read_studies:
+                    resources = ''
+                    for study in read_studies:
+                        resources += f"arn:aws:s3:::{study['bucket']}/{study['prefix']}*,"
+                    resources = resources[:-1]
+                    
+                    external_study_policy += f"""
+                    {{
+                        "Sid": "S3StudyReadAccess",
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:GetObject",
+                            "s3:GetObjectTagging",
+                            "s3:GetObjectVersion",
+                            "s3:GetObjectVersionTagging"
+                        ],
+                        "Resource": [
+                            {resources}
+                        ]
+                    }},
+                    """
+                    
+                if readwrite_studies:
+                    resources=''
+                    for study in readwrite_studies:
+                        resources += f"arn:aws:s3:::{study['bucket']}/{study['prefix']}*,"
+                    resources = resources[:-1]
+                    
+                    external_study_policy += f"""
+                    {{
+                        "Sid": "S3StudyReadWriteAccess",
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:AbortMultipartUpload",
+                            "s3:ListMultipartUploadParts",
+                            "s3:PutObject",
+                            "s3:PutObjectAcl",
+                            "s3:PutObjectTagging",
+                            "s3:PutObjectVersionTagging",
+                            "s3:DeleteObject",
+                            "s3:DeleteObjectTagging",
+                            "s3:DeleteObjectVersion",
+                            "s3:DeleteObjectVersionTagging"
+                        ],
+                        "Resource": [
+                            {resources}
+                        ]
+                    }},
+                    """
+                resources=''
+                prefixes = ''
+                for study in read_studies+readwrite_studies:
+                    resources += f"arn:aws:s3:::{study["bucket"]},"
+                    prefixes += f"{study["prefix"]}*,"
+                resources = resources[:-1]
+                prefixes = prefixes[:-1]
+
+                external_study_policy += f"""            
+                    {{
+                        "Sid": "studyListS3Access1",
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:ListBucket",
+                            "s3:ListBucketVersions"
+                        ],
+                        "Resource": [
+                            {resources}
+                        ],
+                        "Condition": {{
+                            "StringLike": {{
+                                "s3:prefix": [
+                                    {prefixes}
+                                ]
+                            }}
+                        }}
+                    }},
+                    {{
+                        "Condition": {{
+                            "StringNotEquals": {{
+                                "aws:SourceVpce": "vpce-05d91d65eeb16581b"
+                            }},
+                            "StringLike": {{
+                                "s3:prefix": [
+                                    "VERDI-mpox/*"
+                                ]
+                            }}
+                        }},
+                        "Action": [
+                            "s3:Get*",
+                            "s3:List*",
+                            "s3:Put*",
+                            "s3:Delete*",
+                            "s3:AbortMultipartUpload",
+                            "s3:ListMultipartUploadParts"
+                        ],
+                        "Resource": "arn:aws:s3:::data-warehouse-01ed83e4-5663-4477-9c52-bc33f9ba3d6f",
+                        "Effect": "Deny",
+                        "Sid": "AllowAccessFrom05d91d65eeb16581b"
+                    }}
+                ]
+            }}
+                        """
+
               study_bucket_name = s3_mounts[0]['bucket']
               study_bucket_prefix = s3_mounts[0]['prefix']
               responseData['bucket_name'] = study_bucket_name
               responseData['prefix'] = study_bucket_prefix
+              responseData['external_study_policy'] = external_study_policy
               print(f"{responseData}")
               cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
               return
@@ -504,6 +620,11 @@ Resources:
                 - Effect: "Allow"
                   Action: "s3:ListBucket"
                   Resource: "arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86"
+        - PolicyName: !Sub "${Namespace}-appstream-access-external-study-buckets"
+          PolicyDocument: !If
+            - StudyAttached
+            - !GetAtt StudyBucketInfo.external_study_policy
+            - !Ref AWS::NoValue
 
   AppStreamFleet:
     Type: "AWS::AppStream::Fleet"
