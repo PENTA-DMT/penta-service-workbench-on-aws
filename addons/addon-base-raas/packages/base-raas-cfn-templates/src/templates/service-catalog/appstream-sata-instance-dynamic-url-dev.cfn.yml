@@ -183,7 +183,7 @@ Resources:
                 if read_studies:
                     resources = ''
                     for study in read_studies:
-                        resources += f"arn:aws:s3:::{study['bucket']}/{study['prefix']}*,"
+                        resources += f'"arn:aws:s3:::{study['bucket']}/{study['prefix']}*",'
                     resources = resources[:-1]
                     
                     external_study_policy += f"""
@@ -205,7 +205,7 @@ Resources:
                 if readwrite_studies:
                     resources=''
                     for study in readwrite_studies:
-                        resources += f"arn:aws:s3:::{study['bucket']}/{study['prefix']}*,"
+                        resources += f'"arn:aws:s3:::{study['bucket']}/{study['prefix']}*",'
                     resources = resources[:-1]
                     
                     external_study_policy += f"""
@@ -232,8 +232,8 @@ Resources:
                 resources=''
                 prefixes = ''
                 for study in read_studies+readwrite_studies:
-                    resources += f"arn:aws:s3:::{study['bucket']},"
-                    prefixes += f"{study['prefix']}*,"
+                    resources += f'"arn:aws:s3:::{study['bucket']}",'
+                    prefixes += f'"{study['prefix']}*",'
                 resources = resources[:-1]
                 prefixes = prefixes[:-1]
 
@@ -258,7 +258,7 @@ Resources:
                     }}
                 ]
             }}
-                        """
+                """
 
               study_bucket_name = s3_mounts[0]['bucket']
               study_bucket_prefix = s3_mounts[0]['prefix']
