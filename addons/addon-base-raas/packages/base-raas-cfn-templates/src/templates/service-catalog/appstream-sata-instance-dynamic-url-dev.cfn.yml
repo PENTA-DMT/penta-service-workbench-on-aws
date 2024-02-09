@@ -168,10 +168,11 @@ Resources:
             s3_mounts_str = '${S3Mounts}'
             try:
               s3_mounts = json.loads(s3_mounts_str)
+              external_study_policy=''
 
               # find read only and readwrite external studies
-              read_studies = [study for study in s3_mounts if study['roleArn'] and not study['writeable']]
-              readwrite_studies = [study for study in s3_mounts if study['roleArn'] and study['writeable']]
+              read_studies = [study for study in s3_mounts if 'roleArn' in study.keys() and study['roleArn'] and not study['writeable']]
+              readwrite_studies = [study for study in s3_mounts if 'roleArn' in study.keys() and study['roleArn'] and study['writeable']]
 
               # build the policy document
               if read_studies or readwrite_studies:
@@ -541,7 +542,7 @@ Resources:
                   Resource: "arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86"
         - PolicyName: !Sub "${Namespace}-appstream-access-external-study-buckets"
           PolicyDocument: !If
-            - StudyAttached
+            - !And [{!Condition StudyAttached}, {!Not [!Equals [!GetAtt StudyBucketInfo.external_study_policy, ""]]}]
             - !GetAtt StudyBucketInfo.external_study_policy
             - !Ref AWS::NoValue
 
