@@ -177,18 +177,17 @@ Resources:
               # build the policy document
               if read_studies or readwrite_studies:
                 external_study_policy = f'{{"Version": "2012-10-17","Statement": ['
-                if read_studies:
-                    resources = ''
-                    for study in read_studies:
-                        resources += f'"arn:aws:s3:::{study['bucket']}/{study['prefix']}*",'
-                    resources = resources[:-1]
-                    
-                    external_study_policy += f'{{"Sid": "S3StudyReadAccess","Effect": "Allow","Action":["s3:GetObject","s3:GetObjectTagging","s3:GetObjectVersion","s3:GetObjectVersionTagging"],"Resource":[{resources}]}},'
+                resources = ''
+                  for study in read_studies+readwrite_studies:
+                    resources += f'"arn:aws:s3:::{study['bucket']}/{study['prefix']}*",'
+                  resources = resources[:-1]
+                  
+                  external_study_policy += f'{{"Sid": "S3StudyReadAccess","Effect": "Allow","Action":["s3:GetObject","s3:GetObjectTagging","s3:GetObjectVersion","s3:GetObjectVersionTagging"],"Resource":[{resources}]}},'
                     
                 if readwrite_studies:
                     resources=''
                     for study in readwrite_studies:
-                        resources += f'"arn:aws:s3:::{study['bucket']}/{study['prefix']}*",'
+                      resources += f'"arn:aws:s3:::{study['bucket']}/{study['prefix']}*",'
                     resources = resources[:-1]
                     
                     external_study_policy += f'{{"Sid": "S3StudyReadWriteAccess","Effect": "Allow","Action": ["s3:AbortMultipartUpload","s3:ListMultipartUploadParts","s3:PutObject","s3:PutObjectAcl","s3:PutObjectTagging","s3:PutObjectVersionTagging","s3:DeleteObject","s3:DeleteObjectTagging","s3:DeleteObjectVersion","s3:DeleteObjectVersionTagging"],"Resource": [{resources}]}},'
@@ -544,7 +543,11 @@ Resources:
           PolicyDocument: !If
             - StudyAttached
             - !GetAtt StudyBucketInfo.external_study_policy
-            - "{}"
+            - Version: "2012-10-17"
+              Statement:
+                - Effect: "Allow"
+                  Action: "s3:ListBucket"
+                  Resource: "arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86"
 
   AppStreamFleet:
     Type: "AWS::AppStream::Fleet"
