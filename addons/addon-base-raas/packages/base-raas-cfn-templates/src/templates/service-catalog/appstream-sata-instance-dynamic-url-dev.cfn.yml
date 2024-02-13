@@ -174,7 +174,7 @@ Resources:
             s3_mounts_str = '${S3Mounts}'
             try:
               s3_mounts = json.loads(s3_mounts_str)
-              external_study_policy='{}'
+              external_study_policy = '{"Version": "2012-10-17","Statement": ['
 
               # find read only and readwrite external studies
               read_studies = [study for study in s3_mounts if 'roleArn' in study.keys() and study['roleArn'] and not study['writeable']]
@@ -182,7 +182,7 @@ Resources:
 
               # build the policy document
               if read_studies or readwrite_studies:
-                external_study_policy = f'{{"Version": "2012-10-17","Statement": ['
+                
                 resources = ''
                 for study in read_studies+readwrite_studies:
                   resources += f'"arn:aws:s3:::{study['bucket']}/{study['prefix']}*",'
@@ -207,7 +207,8 @@ Resources:
                 prefixes = prefixes[:-1]
 
                 external_study_policy += f'{{"Sid": "studyListS3Access1","Effect": "Allow","Action": ["s3:ListBucket","s3:ListBucketVersions"],"Resource": [{resources}],"Condition": {{"StringLike": {{"s3:prefix": [{prefixes}]}}}}}}]}}'
-
+              else:
+                external_study_policy += '{"Effect": "Allow", "Action":"s3:ListBucket", "Resource":"arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86"}]}'
               study_bucket_name = s3_mounts[0]['bucket']
               study_bucket_prefix = s3_mounts[0]['prefix']
               responseData['bucket_name'] = study_bucket_name
