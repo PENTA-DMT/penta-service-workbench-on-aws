@@ -99,6 +99,12 @@ Parameters:
   AppstreamSubnetId:
     Description: Subnet id created to allow appstream to deploy an elastic fleet
     Type: String
+  MountOrSync:
+    Description: Chose whether to use mount or sync script for studies
+    Type: String
+    AllowedValues:
+         - "mount"
+         - "sync"
   # EnvironmentInstanceFiles:
   #   Type: String
   #   Description: >-
@@ -353,12 +359,20 @@ Resources:
           s3 = boto3.client('s3')
 
           def lambda_handler(event, context):
-            print(event['RequestType'])
+            """
+            This function, on workspace creation:
+              - retrieves session scripts templates
+              - fills studies information
+              - zips and uploads the scripts to S3
+            on workspace deletion:
+              - deletes resources created in previous steps
+            """
+            # print(event['RequestType'])
             responseData = {}
             repo_bucket = 'appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86'
-            repo_script_key = 'mount_s3_sessionscript.sh'
+            repo_script_key = '${MountOrSync}_s3_sessionscript.sh'
             repo_vhd_key = 'mount-vhd.sh'
-            repo_config_key = 'config.json'
+            repo_config_key = '${MountOrSync}_config.json'
             zipfile_key = f"${Namespace}-session_scripts.zip"
             vhd_key = f"${Namespace}-{repo_vhd_key}"
             bucket_to_mount = repo_bucket
@@ -406,7 +420,7 @@ Resources:
                   zipf.writestr(repo_script_key, session_script)
                   
                   # Add the second file to the zip archive
-                  zipf.writestr(repo_config_key, session_config)
+                  zipf.writestr('config.json', session_config)
 
               # Reset the buffer to the beginning
               zip_buffer.seek(0)
