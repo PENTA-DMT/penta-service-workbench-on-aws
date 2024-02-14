@@ -29,82 +29,54 @@ Parameters:
   IamPolicyDocument:
     Type: String
     Description: The IAM policy to be associated with the launched workstation
-    # Example:
-    #{
-  #    "Version": "2012-10-17",
-  #    "Statement": [
-  #        {
-  #            "Sid": "S3StudyReadWriteAccess",
-  #            "Effect": "Allow",
-  #            "Action": [
-  #                "s3:GetObject",
-  #                "s3:GetObjectTagging",
-  #                "s3:GetObjectTorrent",
-  #                "s3:GetObjectVersion",
-  #                "s3:GetObjectVersionTagging",
-  #                "s3:GetObjectVersionTorrent",
-  #                "s3:AbortMultipartUpload",
-  #                "s3:ListMultipartUploadParts",
-  #                "s3:PutObject",
-  #                "s3:PutObjectAcl",
-  #                "s3:PutObjectTagging",
-  #                "s3:PutObjectVersionTagging",
-  #                "s3:DeleteObject",
-  #                "s3:DeleteObjectTagging",
-  #                "s3:DeleteObjectVersion",
-  #                "s3:DeleteObjectVersionTagging"
-  #            ],
-  #            "Resource": [
-  #                !Sub "arn:aws:s3:::${AWS::AccountId}-demo-fr-sw-studydata/users/root@example.com/teststudy/*"
-  #            ]
-  #        },
-  #        {
-  #            "Sid": "studyListS3Access1",
-  #            "Effect": "Allow",
-  #            "Action": [
-  #                "s3:ListBucket",
-  #                "s3:ListBucketVersions"
-  #            ],
-  #            "Resource": !Sub "arn:aws:s3:::${AWS::AccountId}-demo-fr-sw-studydata",
-  #            "Condition": {
-  #                "StringLike": {
-  #                    "s3:prefix": [
-  #                        "users/root@example.com/teststudy/*"
-  #                    ]
-  #                }
-  #            }
-  #        },
-  #        {
-  #            "Sid": "studyKMSAccess",
-  #            "Action": [
-  #                "kms:Decrypt",
-  #                "kms:DescribeKey",
-  #                "kms:Encrypt",
-  #                "kms:GenerateDataKey",
-  #                "kms:ReEncrypt*"
-  #            ],
-  #            "Effect": "Allow",
-  #            "Resource": [
-  #                !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/07853676-9430-4c9b-b3b9-ccfa4fb16dee"
-  #            ]
-  #        }
-  #    ]
-  #}
   VPC:
     Description: The VPC in which the EC2 instance will reside
     Type: AWS::EC2::VPC::Id
+  VPCEndpoint:
+    Description: VPC Endpoint to use for S3 bucket policy of external studies
+    Type: String
   Subnet:
     Description: The VPC subnet in which the EC2 instance will reside
     Type: AWS::EC2::Subnet::Id
   AppstreamSubnetId:
     Description: Subnet id created to allow appstream to deploy an elastic fleet
-    Type: String
+    Type: AWS::EC2::Subnet::Id
   MountOrSync:
     Description: Chose whether to use mount or sync script for studies
     Type: String
     AllowedValues:
          - "mount"
          - "sync"
+  CLIPBOARD_COPY_FROM_LOCAL_DEVICE:
+    Description: 
+    Type: String
+    AllowedValues:
+         - ENABLED
+         - DISABLED
+  CLIPBOARD_COPY_TO_LOCAL_DEVICE:
+    Description: 
+    Type: String
+    AllowedValues:
+         - ENABLED
+         - DISABLED
+  FILE_DOWNLOAD:
+    Description: 
+    Type: String
+    AllowedValues:
+         - ENABLED
+         - DISABLED
+  FILE_UPLOAD:
+    Description: 
+    Type: String
+    AllowedValues:
+         - ENABLED
+         - DISABLED
+  PRINTING_TO_LOCAL_DEVICE:
+    Description: 
+    Type: String
+    AllowedValues:
+         - ENABLED
+         - DISABLED
   # EnvironmentInstanceFiles:
   #   Type: String
   #   Description: >-
@@ -207,6 +179,9 @@ Resources:
                 prefixes = prefixes[:-1]
 
                 external_study_policy += f'{{"Sid": "studyListS3Access1","Effect": "Allow","Action": ["s3:ListBucket","s3:ListBucketVersions"],"Resource": [{resources}],"Condition": {{"StringLike": {{"s3:prefix": [{prefixes}]}}}}}}]}}'
+
+                external_study_policy += f',{"Condition": {"StringNotEquals": {"aws:SourceVpce": "${VPCEndpoint}"},"StringLike": {"s3:prefix": [{prefixes}]}},"Action": ["s3:Get*","s3:List*","s3:Put*","s3:Delete*","s3:AbortMultipartUpload","s3:ListMultipartUploadParts"],"Resource": {resources},"Effect": "Deny","Sid": "AllowAccessFrom${VPCEndpoint}"}'
+
               else:
                 external_study_policy += '{"Effect": "Allow", "Action":"s3:ListBucket", "Resource":"arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86"}]}'
               study_bucket_name = s3_mounts[0]['bucket']
@@ -685,15 +660,15 @@ Resources:
       Description: "Stack was created using CloudFormation"
       UserSettings:
         - Action: "CLIPBOARD_COPY_FROM_LOCAL_DEVICE"
-          Permission: DISABLED
+          Permission: !Ref CLIPBOARD_COPY_FROM_LOCAL_DEVICE
         - Action: "CLIPBOARD_COPY_TO_LOCAL_DEVICE"
-          Permission: DISABLED
+          Permission: !Ref CLIPBOARD_COPY_TO_LOCAL_DEVICE
         - Action: "FILE_DOWNLOAD"
-          Permission: DISABLED
+          Permission: !Ref FILE_DOWNLOAD
         - Action: "FILE_UPLOAD"
-          Permission: DISABLED
+          Permission: !Ref FILE_UPLOAD
         - Action: "PRINTING_TO_LOCAL_DEVICE"
-          Permission: DISABLED
+          Permission: !Ref PRINTING_TO_LOCAL_DEVICE
 
   AppStreamDemoStackFleetAssociation:
     Type: "AWS::AppStream::StackFleetAssociation"
