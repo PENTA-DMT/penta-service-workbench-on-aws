@@ -47,31 +47,31 @@ Parameters:
     AllowedValues:
       - "mount"
       - "sync"
-  CLIPBOARD_COPY_FROM_LOCAL_DEVICE:
+  ClipboardCopyFromLocalDevice:
     Description: Appstream Stack Parameter
     Type: String
     AllowedValues:
       - ENABLED
       - DISABLED
-  CLIPBOARD_COPY_TO_LOCAL_DEVICE:
+  ClipboardCopyToLocalDevice:
     Description: Appstream Stack Parameter
     Type: String
     AllowedValues:
       - ENABLED
       - DISABLED
-  FILE_DOWNLOAD:
+  FileDownload:
     Description: Appstream Stack Parameter
     Type: String
     AllowedValues:
       - ENABLED
       - DISABLED
-  FILE_UPLOAD:
+  FileUpload:
     Description: Appstream Stack Parameter
     Type: String
     AllowedValues:
       - ENABLED
       - DISABLED
-  PRINTING_TO_LOCAL_DEVICE:
+  PrintingToLocalDevice:
     Description: Appstream Stack Parameter
     Type: String
     AllowedValues:
@@ -660,15 +660,15 @@ Resources:
       Description: "Stack was created using CloudFormation"
       UserSettings:
         - Action: "CLIPBOARD_COPY_FROM_LOCAL_DEVICE"
-          Permission: !Ref CLIPBOARD_COPY_FROM_LOCAL_DEVICE
+          Permission: !Ref ClipboardCopyFromLocalDevice
         - Action: "CLIPBOARD_COPY_TO_LOCAL_DEVICE"
-          Permission: !Ref CLIPBOARD_COPY_TO_LOCAL_DEVICE
+          Permission: !Ref ClipboardCopyToLocalDevice
         - Action: "FILE_DOWNLOAD"
-          Permission: !Ref FILE_DOWNLOAD
+          Permission: !Ref FileDownload
         - Action: "FILE_UPLOAD"
-          Permission: !Ref FILE_UPLOAD
+          Permission: !Ref FileUpload
         - Action: "PRINTING_TO_LOCAL_DEVICE"
-          Permission: !Ref PRINTING_TO_LOCAL_DEVICE
+          Permission: !Ref PrintingToLocalDevice
 
   AppStreamDemoStackFleetAssociation:
     Type: "AWS::AppStream::StackFleetAssociation"
