@@ -67,8 +67,8 @@ const productsToCreate = [
     description: `* An AppStream2.0 Elastic App with Stata17 \n* Secure compute in the cloud`,
   },
   {
-    filename: 'appstream-sata-instance-dynamic-url-dev',
-    displayName: 'Stata17 dynamic url dev version',
+    filename: 'appstream-sata-instance-dynamic-url-sync',
+    displayName: 'Stata17 dynamic url and s3 sync version',
     description: 'AppStream2.0 Elastic App with Stata17'
   }//,
   // {
