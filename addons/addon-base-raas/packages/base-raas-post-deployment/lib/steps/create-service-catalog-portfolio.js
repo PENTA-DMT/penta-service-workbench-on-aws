@@ -70,12 +70,12 @@ const productsToCreate = [
     filename: 'appstream-sata-instance-dynamic-url-dev',
     displayName: 'Stata17 dynamic url dev version',
     description: 'AppStream2.0 Elastic App with Stata17'
-  },
-  {
-    filename: 'appstream-sata-instance-external-lambda-dev',
-    displayName: 'Stata17 dynamic url dev version with external lambdas',
-    description: 'AppStream2.0 Elastic App with Stata17'
-  }
+  }//,
+  // {
+  //   filename: 'appstream-sata-instance-external-lambda-dev',
+  //   displayName: 'Stata17 dynamic url dev version with external lambdas',
+  //   description: 'AppStream2.0 Elastic App with Stata17'
+  // }
 ];
 
 const autoCreateVersion = 'v1';
