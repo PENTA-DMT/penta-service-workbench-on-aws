@@ -574,7 +574,7 @@ Resources:
                 print("Disassociating Apps and ${AppStreamFleet}")
                 [appstream.disassociate_application_fleet(
                   FleetName="${AppStreamFleet}", ApplicationArn=app)
-                for app in ${AppstreamScriptsAndApplicationsInfo}]
+                for app in ${AppstreamScriptsAndApplicationsInfo.application_arns}]
                 cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
                 return
               except Exception as e:
@@ -586,7 +586,7 @@ Resources:
               print("Associating StataApp and ${AppStreamFleet}")
               [appstream.associate_application_fleet(
                   FleetName="${AppStreamFleet}", ApplicationArn=app)
-                for app in ${AppstreamScriptsAndApplicationsInfo}]
+                for app in ${AppstreamScriptsAndApplicationsInfo.application_arns}]
               cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
               return
             except Exception as e:
