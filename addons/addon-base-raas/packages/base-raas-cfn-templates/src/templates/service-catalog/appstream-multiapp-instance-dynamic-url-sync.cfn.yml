@@ -1,0 +1,799 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Service-Workbench-on-AWS AppStream2.0-Linux
+
+Parameters:
+  Namespace:
+    Type: String
+    Description: An environment name that will be prefixed to resource names
+  SolutionNamespace:
+    #Do not remove
+    Type: String
+    Description: The namespace value provided when onboarding the Member account
+  IsAppStreamEnabled:
+    #Do not remove
+    Type: String
+    AllowedValues:
+      - true
+      - false
+    Description: Is AppStream enabled for this workspace
+  StreamInstanceType:
+    Description: Streaming Instance Types
+    Default: stream.standard.small
+    Type: String
+  AccessFromCIDRBlock:
+    Type: String
+    Description: The CIDR used to access the ec2 instances.
+    Default: 10.0.0.0/19
+  S3Mounts:
+    Type: String
+    Description:
+      A JSON array of objects with name, bucket, and prefix properties
+      used to mount data
+  IamPolicyDocument:
+    Type: String
+    Description: The IAM policy to be associated with the launched workstation
+  VPC:
+    Description: The VPC in which the EC2 instance will reside
+    Type: AWS::EC2::VPC::Id
+  VPCEndpoint:
+    Description: VPC Endpoint to use for S3 bucket policy of external studies
+    Type: String
+  Subnet:
+    Description: The VPC subnet in which the EC2 instance will reside
+    Type: AWS::EC2::Subnet::Id
+  AppstreamSubnetId:
+    Description: Subnet id created to allow appstream to deploy an elastic fleet
+    Type: AWS::EC2::Subnet::Id
+  MountOrSync:
+    Description: Chose whether to use mount or sync script for studies
+    Type: String
+    AllowedValues:
+      - mount
+      - sync
+  Applications:
+    Description: Applications to deploy. Names must be consistent with AppBlock names and Scripts names.
+    Type: String
+    Default: Stata,Dbeaver,LibreOffice
+  ClipboardCopyFromLocalDevice:
+    Description: Appstream Stack Parameter
+    Type: String
+    AllowedValues:
+      - ENABLED
+      - DISABLED
+  ClipboardCopyToLocalDevice:
+    Description: Appstream Stack Parameter
+    Type: String
+    AllowedValues:
+      - ENABLED
+      - DISABLED
+  FileDownload:
+    Description: Appstream Stack Parameter
+    Type: String
+    AllowedValues:
+      - ENABLED
+      - DISABLED
+  FileUpload:
+    Description: Appstream Stack Parameter
+    Type: String
+    AllowedValues:
+      - ENABLED
+      - DISABLED
+  PrintingToLocalDevice:
+    Description: Appstream Stack Parameter
+    Type: String
+    AllowedValues:
+      - ENABLED
+      - DISABLED
+  # EnvironmentInstanceFiles:
+  #   Type: String
+  #   Description: >-
+  #     An S3 URI (starting with "s3://") that specifies the location of files to be copied to
+  #     the environment instance, including any bootstrap scripts
+  # EncryptionKeyArn:
+  #   Type: String
+  #   Description: The ARN of the KMS encryption Key used to encrypt data in the instance
+  EgressStoreIamPolicyDocument:
+    #Do not remove
+    Type: String
+    Description: The IAM policy for launched workstation to access egress store
+
+Conditions:
+  # AppStreamEnabled: !Equals [!Ref IsAppStreamEnabled, "true"]
+  # AppStreamDisabled: !Equals [!Ref IsAppStreamEnabled, "false"]
+  StudyAttached: !Not
+    - !Equals
+      - !Ref S3Mounts
+      - "[]"
+  NoStudyAttached: !Equals
+    - !Ref S3Mounts
+    - "[]"
+
+Resources:
+  BasicLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join
+        - "-"
+        - - !Ref Namespace
+          - BasicLambdaRole
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: !Join
+            - "-"
+            - - !Ref Namespace
+              - AccessCustomResourcePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:*
+                Resource:
+                  - !Sub arn:aws:s3:::cloudformation-custom-resource-response-${AWS::Region}
+                  - !Sub arn:aws:s3:::cloudformation-custom-resource-response-${AWS::Region}/*
+
+  GetStudyInfo:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: !Sub |
+          import cfnresponse
+          import json
+          def lambda_handler(event, context):
+            print(event['RequestType'])
+            responseData = {}
+            # Check if the request is a delete event
+            if event['RequestType'] == 'Delete':
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+              return
+            # S3Mounts format example
+            # [{"id":"demo_study","readable":true,"writeable":false,"kmsArn":"arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/07853676-9430-4c9b-b3b9-ccfa4fb16dee","bucket":"${AWS::AccountId}-demo-fr-sw-studydata","prefix":"studies/Organization/demo_study/"}]
+            s3_mounts_str = '${S3Mounts}'
+            # if no study is attached, return empty bucket_name, prefix and policy
+            if s3_mounts_str == '[]':
+              responseData['bucket_name'] = ''
+              responseData['prefix'] = ''
+              responseData['external_study_policy'] = ''
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+              return
+            else:
+              try:
+                s3_mounts = json.loads(s3_mounts_str)
+                external_study_policy = '{"Version": "2012-10-17","Statement": ['
+                # find read only and readwrite external studies
+                read_studies = [study for study in s3_mounts if 'roleArn' in study.keys() and study['roleArn'] and not study['writeable']]
+                readwrite_studies = [study for study in s3_mounts if 'roleArn' in study.keys() and study['roleArn'] and study['writeable']]
+                # build the policy document
+                if read_studies or readwrite_studies:
+                  resources = ''
+                  for study in read_studies+readwrite_studies:
+                    resources += f'"arn:aws:s3:::{study['bucket']}/{study['prefix']}*",'
+                  resources = resources[:-1]
+                  external_study_policy += f'{{"Sid": "S3StudyReadAccess","Effect": "Allow","Action":["s3:GetObject","s3:GetObjectTagging","s3:GetObjectVersion","s3:GetObjectVersionTagging"],"Resource":[{resources}]}},'
+                  if readwrite_studies:
+                      resources=''
+                      for study in readwrite_studies:
+                        resources += f'"arn:aws:s3:::{study['bucket']}/{study['prefix']}*",'
+                      resources = resources[:-1]
+                      external_study_policy += f'{{"Sid": "S3StudyReadWriteAccess","Effect": "Allow","Action": ["s3:AbortMultipartUpload","s3:ListMultipartUploadParts","s3:PutObject","s3:PutObjectAcl","s3:PutObjectTagging","s3:PutObjectVersionTagging","s3:DeleteObject","s3:DeleteObjectTagging","s3:DeleteObjectVersion","s3:DeleteObjectVersionTagging"],"Resource": [{resources}]}},'
+                  resources=''
+                  prefixes = ''
+                  for study in read_studies+readwrite_studies:
+                      resources += f'"arn:aws:s3:::{study['bucket']}",'
+                      prefixes += f'"{study["prefix"]}*",'
+                  resources = resources[:-1]
+                  prefixes = prefixes[:-1]
+                  external_study_policy += f'{{"Sid": "studyListS3Access1","Effect": "Allow","Action": ["s3:ListBucket","s3:ListBucketVersions"],"Resource": [{resources}],"Condition": {{"StringLike": {{"s3:prefix": [{prefixes}]}}}}}}'
+                  vpc_endpoint = '${VPCEndpoint}'
+                  external_study_policy += f',{{"Sid": "AllowAccessFromVPCEndpoint","Effect": "Deny", "Action": ["s3:Get*","s3:List*","s3:Put*","s3:Delete*","s3:AbortMultipartUpload","s3:ListMultipartUploadParts"], "Resource": [{resources}], "Condition": {{"StringNotEquals": {{"aws:SourceVpce": "{vpc_endpoint}"}},"StringLike": {{"s3:prefix": [{prefixes}]}}}}}}]}}'
+                else:
+                  external_study_policy += '{"Effect": "Allow", "Action":"s3:ListBucket", "Resource":"arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86"}]}'
+                study_bucket_name = s3_mounts[0]['bucket']
+                study_bucket_prefix = s3_mounts[0]['prefix']
+                responseData['bucket_name'] = study_bucket_name
+                responseData['prefix'] = study_bucket_prefix
+                responseData['external_study_policy'] = external_study_policy
+                print(f"{responseData}")
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+                return
+              except Exception as e:
+                print(f"Failed with exception {e}")
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
+                return
+      Role: !GetAtt BasicLambdaRole.Arn
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Timeout: 30
+
+  StudyBucketInfo:
+    Type: Custom::StudyBucketInfo
+    Properties:
+      ServiceToken: !GetAtt GetStudyInfo.Arn
+
+  CreateAppstreamScriptsAndApplicationsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${Namespace}CreateAppstreamScriptsAndApplicationsRole
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: !Join
+            - "-"
+            - - !Ref Namespace
+              - lambda-access-study-buckets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:*
+                Resource:
+                  - !Sub arn:aws:s3:::cloudformation-custom-resource-response-${AWS::Region}
+                  - !Sub arn:aws:s3:::cloudformation-custom-resource-response-${AWS::Region}/*
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:PutObjectTagging
+                  - s3:DeleteObject
+                Resource:
+                  - arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/*
+              - Effect: Allow
+                Action:
+                  - appstream:CreateApplication
+                  - appstream:CreateAppBlock
+                  - appstream:DescribeApplications
+                  - appstream:DescribeAppBlocks
+                  - appstream:UpdateApplication
+                  - appstream:UpdateAppBlock
+                  - appstream:DeleteApplication
+                  - appstream:DeleteAppBlock
+                Resource:
+                  - !Sub arn:aws:appstream:${AWS::Region}:${AWS::AccountId}:*
+
+  CreateAppstreamScriptsAndApplications:
+    DependsOn:
+      - StudyBucketInfo
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: !Sub |
+          import boto3
+          import cfnresponse
+          import json
+          import zipfile
+          import io
+          s3 = boto3.client('s3')
+          appstream = boto3.client('appstream')
+          def lambda_handler(event, context):
+            """
+            This function, on workspace creation:
+              - retrieves session scripts templates
+              - fills studies information
+              - zips and uploads the scripts to S3
+            on workspace deletion:
+              - deletes resources created in previous steps
+            """
+            # print(event['RequestType'])
+            study_attached = '${S3Mounts}' != '[]'
+            applications = '${AppStreamApplications}'.split(',')
+            responseData = {}
+            repo_bucket = 'appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86'
+            app_names = [name.lower() for name in applications]
+            repo_vhd_keys = [f'mount-{app_name}-vhd.sh' for app_name in app_names]
+            vhd_keys = [f"${Namespace}/{repo_vhd_key}" for repo_vhd_key in repo_vhd_keys]
+            
+            if study_attached:
+              app_names.append('studies')
+              repo_script_keys = [f'sync_s3_{app_name}_sessionscript.sh' for app_name in app_names]
+              repo_config_key = 'sync_multiapp_config.json'
+              zipfile_key = "${Namespace}/multiapp-session_scripts.zip"
+            
+            bucket_to_mount = repo_bucket
+            key_prefix = "${StudyBucketInfo.prefix}"
+            # Check if the request is a delete event
+            if event['RequestType'] == 'Delete':
+              try:
+                if study_attached:
+                  s3.delete_object(Bucket=bucket_to_mount, Key=f"{key_prefix}{zipfile_key}")                
+                [s3.delete_object(Bucket=bucket_to_mount, Key=f"{key_prefix}{vhd_key}") for vhd_key in vhd_keys]
+                [appstream.delete_application(Name=f"${Namespace}{app_name}App", ForceDelete=True) for app_name in applications]
+                [appstream.delete_app_block(Name=f"${Namespace}{app_name}AppBlock", ForceDelete=True) for app_name in applications]
+              except Exception as e:
+                print(f"Failed getting repobucket data with exeption {e}")
+                  # cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
+                  # return
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+              return
+            # S3Mounts format example
+            # [{"id":"demo_study","readable":true,"writeable":false,"kmsArn":"arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/07853676-9430-4c9b-b3b9-ccfa4fb16dee","bucket":"${AWS::AccountId}-demo-fr-sw-studydata","prefix":"studies/Organization/demo_study/"}]
+
+            s3_mounts_str = '${S3Mounts}'
+            try:
+              responseData['application_arns'] = []
+              
+              for repo_vhd_key, vhd_key, app_name in zip(repo_vhd_keys, vhd_keys, applications):
+                get_vhd_resp = s3.get_object(Bucket=bucket_to_mount, Key=repo_vhd_key)
+                vhd_script = get_vhd_resp['Body'].read().decode('utf-8')
+                vhd_script = vhd_script.replace("AppBlockName", f"${Namespace}{app_name}AppBlock")
+                
+                s3.put_object(Body=vhd_script.encode('utf-8'), Bucket=bucket_to_mount, Key=f"{key_prefix}{vhd_key}")
+                app_block_resp = appstream.create_app_block(
+                  Name=f"${Namespace}{app_name}AppBlock", 
+                  SourceS3Location={
+                    'S3Bucket':bucket_to_mount, 
+                    'S3Key':f"{app_name.lower()}.tar.gz"
+                  },
+                  SetupScriptDetails={
+                    'ScriptS3Location': {
+                        'S3Bucket': bucket_to_mount,
+                        'S3Key': f"{key_prefix}{vhd_key}"
+                    },
+                    'ExecutablePath': '/usr/bin/bash',
+                    'ExecutableParameters': f'/opt/appstream/AppBlocks/${Namespace}{app_name}AppBlock/{vhd_key}',
+                    'TimeoutInSeconds': 60
+                  },
+                  PackagingType='CUSTOM'
+                )
+                
+                application_resp = appstream.create_application(
+                  Name=f"${Namespace}{app_name}App",
+                  AppBlockArn=app_block_resp['AppBlock']['Arn'],
+                  Platforms='AMAZON_LINUX2',
+                  LaunchPath=f'/mnt/{"stata/app/stata17/xstata-se" if app_name=="Stata" else "dbeaver/app/dbeaver-ce/dbeaver" if app_name=="Dbeaver" else "libreoffice/app/LibreOffice-still.full-x86_64.AppImage" if app_name=="LibreOffice" else ""}',
+                  IconS3Location={
+                    'S3Bucket': bucket_to_mount,
+                    'S3Key': f'{app_name.lower()}.ico'
+                  },
+                  InstanceFamilies=[
+                    'GENERAL_PURPOSE',
+                  ],
+                )
+                
+                responseData['application_arns'].append(application_resp['Application']['Arn'])
+
+              if study_attached:
+                get_config_resp = s3.get_object(Bucket=bucket_to_mount, Key=repo_config_key)
+                session_config = get_config_resp['Body'].read().decode('utf-8')
+                
+                # create zip file
+                zip_buffer = io.BytesIO()
+                # Create a new zip file in memory
+                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                  for repo_script_key in repo_script_keys:
+                    try:
+                      get_script_resp = s3.get_object(Bucket=bucket_to_mount, Key=repo_script_key)                    
+                      session_script = get_script_resp['Body'].read().decode('utf-8')
+                      if 'sync_s3_studies' in repo_script_key:
+                        session_script = session_script.replace("S3_MOUNTS", s3_mounts_str)
+                    
+                      # Add the file to the zip archive
+                      zipf.writestr(repo_script_key, session_script)
+                    except s3.exceptions.NoSuchKey as e:
+                      print(e)
+                    
+                  # Add the second file to the zip archive
+                  zipf.writestr('config.json', session_config)               
+                  
+                # Reset the buffer to the beginning
+                zip_buffer.seek(0)
+                # Upload the file to S3
+                s3.put_object(Body=zip_buffer.read(), Bucket=bucket_to_mount, Key=f"{key_prefix}{zipfile_key}", Tagging="AppStreamScript=SessionScript")                              
+                responseData['zipfile_key'] = f"{key_prefix}{zipfile_key}"              
+            except Exception as e:
+              responseData={}
+              print(f"Failed putting session script with exeption {e}")
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, )
+              return
+            responseData['zipfile_key'] = ''
+            print(responseData)
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
+            return
+      Role: !GetAtt CreateAppstreamScriptsAndApplicationsRole.Arn
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Timeout: 30
+
+  AppstreamScriptsAndApplicationsInfo:
+    Type: Custom::AppstreamScriptsAndApplicationsInfo
+    Properties:
+      ServiceToken: !GetAtt CreateAppstreamScriptsAndApplications.Arn
+
+  FleetRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join
+        - "-"
+        - - !Ref Namespace
+          - FleetRole
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - appstream.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonAppStreamServiceAccess
+        - arn:aws:iam::aws:policy/AmazonAthenaFullAccess
+      Policies:
+        - PolicyName: !Join
+            - "-"
+            - - !Ref Namespace
+              - appstream-access-custom-resource
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:*
+                Resource:
+                  - !Sub arn:aws:s3:::cloudformation-custom-resource-response-${AWS::Region}
+                  - !Sub arn:aws:s3:::cloudformation-custom-resource-response-${AWS::Region}/*
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource:
+                  - arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/${StudyBucketInfo.prefix}*
+                  - arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/goofys
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86
+        - PolicyName: !Sub ${Namespace}-appstream-access-study-buckets
+          PolicyDocument: !If
+            - StudyAttached
+            - !Ref IamPolicyDocument
+            - Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action: s3:ListBucket
+                  Resource: arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86
+        - PolicyName: !Sub ${Namespace}-appstream-access-external-study-buckets
+          PolicyDocument: !If
+            - StudyAttached
+            - !GetAtt StudyBucketInfo.external_study_policy
+            - Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action: s3:ListBucket
+                  Resource: arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86
+
+  AppStreamFleet:
+    Type: AWS::AppStream::Fleet
+    Properties:
+      Name: !Join
+        - "-"
+        - - !Ref Namespace
+          - appstream-fleet
+      Description: Appstream elastic fleet
+      DisplayName: Fleet created in CloudFormation
+      IamRoleArn: !GetAtt FleetRole.Arn
+      InstanceType: !Ref StreamInstanceType
+      Platform: AMAZON_LINUX2
+      FleetType: ELASTIC
+      VpcConfig:
+        SubnetIds:
+          - !Ref Subnet
+          - !Ref AppstreamSubnetId
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MaxUserDurationInSeconds: 57600
+      DisconnectTimeoutInSeconds: 900
+      EnableDefaultInternetAccess: true
+      MaxConcurrentSessions: 1
+      StreamView: DESKTOP
+      SessionScriptS3Location: !If
+        - StudyAttached
+        - S3Bucket: !GetAtt AppstreamScriptsAndApplicationsInfo.bucket_name
+          S3Key: !GetAtt AppstreamScriptsAndApplicationsInfo.zipfile_key
+        - !Ref AWS::NoValue
+    CreationPolicy:
+      StartFleet: true
+
+  AssociationFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join
+        - "-"
+        - - !Ref Namespace
+          - AssociationFunctionRole
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - appstream.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: !Join
+            - "-"
+            - - !Ref Namespace
+              - AssociationFunctionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - appstream:DisassociateApplicationFleet
+                  - appstream:AssociateApplicationFleet
+                Resource: !GetAtt AppstreamScriptsAndApplicationsInfo.application_arns
+              - Effect: Allow
+                Action:
+                  - appstream:DisassociateApplicationFleet
+                  - appstream:AssociateApplicationFleet
+                Resource:
+                  - !Sub arn:aws:appstream:${AWS::Region}:${AWS::AccountId}:fleet/${AppStreamFleet}
+              - Effect: Allow
+                Action: s3:*
+                Resource:
+                  - !Sub arn:aws:s3:::cloudformation-custom-resource-response-${AWS::Region}
+                  - !Sub arn:aws:s3:::cloudformation-custom-resource-response-${AWS::Region}/*
+
+  AssociationFunction:
+    DependsOn:
+      - AppStreamFleet
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: !Sub |
+          import boto3
+          import cfnresponse
+          appstream = boto3.client('appstream')
+          def lambda_handler(event, context):
+            print(event['RequestType'])
+            responseData = {}
+            if event['RequestType']=='Delete':
+              try:
+                print("Disassociating Apps and ${AppStreamFleet}")
+                [appstream.disassociate_application_fleet(
+                  FleetName="${AppStreamFleet}", ApplicationArn=app)
+                for app in ${AppstreamScriptsAndApplicationsInfo}]
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
+                return
+              except Exception as e:
+                responseData = {}
+                print(f'failed with exception {e}')
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, )
+                return
+            try:
+              print("Associating StataApp and ${AppStreamFleet}")
+              [appstream.associate_application_fleet(
+                  FleetName="${AppStreamFleet}", ApplicationArn=app)
+                for app in ${AppstreamScriptsAndApplicationsInfo}]
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
+              return
+            except Exception as e:
+              responseData = {}
+              print(f'failed with exception {e}')
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, )
+              return
+      Role: !GetAtt AssociationFunctionRole.Arn
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Timeout: 30
+
+  AssociationOutput:
+    Type: Custom::LambdaOutput
+    Properties:
+      ServiceToken: !GetAtt AssociationFunction.Arn
+
+  AppStreamStack:
+    Type: AWS::AppStream::Stack
+    Properties:
+      Name: !Join
+        - "-"
+        - - !Ref Namespace
+          - appstream-stack
+      Description: Stack was created using CloudFormation
+      UserSettings:
+        - Action: CLIPBOARD_COPY_FROM_LOCAL_DEVICE
+          Permission: !Ref ClipboardCopyFromLocalDevice
+        - Action: CLIPBOARD_COPY_TO_LOCAL_DEVICE
+          Permission: !Ref ClipboardCopyToLocalDevice
+        - Action: FILE_DOWNLOAD
+          Permission: !Ref FileDownload
+        - Action: FILE_UPLOAD
+          Permission: !Ref FileUpload
+        - Action: PRINTING_TO_LOCAL_DEVICE
+          Permission: !Ref PrintingToLocalDevice
+
+  AppStreamDemoStackFleetAssociation:
+    Type: AWS::AppStream::StackFleetAssociation
+    Properties:
+      FleetName: !Ref AppStreamFleet
+      StackName: !Ref AppStreamStack
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: EC2 workspace security group
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref AccessFromCIDRBlock
+      Tags:
+        - Key: Name
+          Value: !Join
+            - "-"
+            - - !Ref Namespace
+              - appstream-sg
+        - Key: Description
+          Value: Appstream workspace security group
+      VpcId: !Ref VPC
+
+  GetStreamingUrlRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join
+        - "-"
+        - - !Ref Namespace
+          - GetStreamingUrlRole
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - appstream.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: !Join
+            - "-"
+            - - !Ref Namespace
+              - GetStreamingUrlPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - appstream:CreateStreamingUrl
+                Resource:
+                  - !Sub arn:aws:appstream:${AWS::Region}:${AWS::AccountId}:stack/${AppStreamStack}
+                  - !Sub arn:aws:appstream:${AWS::Region}:${AWS::AccountId}:fleet/${AppStreamFleet}
+              - Effect: Allow
+                Action: s3:*
+                Resource:
+                  - !Sub arn:aws:s3:::cloudformation-custom-resource-response-${AWS::Region}
+                  - !Sub arn:aws:s3:::cloudformation-custom-resource-response-${AWS::Region}/*
+
+  GetStreamingUrl:
+    DependsOn:
+      - AssociationOutput
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt GetStreamingUrlRole.Arn
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Timeout: 30
+      Code:
+        ZipFile: !Sub |
+          import boto3
+          # import cfnresponse
+          appstream = boto3.client('appstream')
+          def lambda_handler(event, context):
+            # print(event['RequestType'])
+            # responseData = {}
+            # # Check if the request is a delete event
+            # if event['RequestType'] == 'Delete':
+            #   cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
+            #   return
+            try:
+              print("Requesting url")
+              resp = appstream.create_streaming_url(StackName="${AppStreamStack}", FleetName="${AppStreamFleet}", UserId='${Namespace}_sw_user', Validity=60)
+              streaming_url = resp['StreamingURL']
+              print(f"{streaming_url}")
+              # responseData['streaming_url'] = streaming_url
+              # cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
+              response = {
+                "statusCode": 302,
+                "headers": {
+                  "Location": streaming_url
+                }
+              }
+              return response
+            except Exception as e:
+              print(f'failed with exception {e}')
+              # responseData = {}
+              # cfnresponse.send(event, context, cfnresponse.FAILED, responseData, )
+              return
+
+  UrlFunctionPermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetStreamingUrl
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  FunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      AuthType: NONE
+      # Cors:
+      #   Cors
+      # Qualifier: String
+      TargetFunctionArn: !GetAtt GetStreamingUrl.Arn
+  # GetStreamingUrlOutput:
+  #   Type: Custom::LambdaOutput
+  #   Properties:
+  #     ServiceToken: !GetAtt GetStreamingUrl.Arn
+
+Outputs:
+  StreamingUrl:
+    Description: The streaming url to access the appstream instance
+    Value: !GetAtt FunctionUrl.FunctionUrl
+
+  NameSpace:
+    Description:
+      The namespace of resources created for the workspace. Useful for
+      debugging purposes.
+    Value: !Ref Namespace
+
+  #  Connection related outputs. These outputs need to have prefix "MetaConnection"
+  #  The "connections" are derived based on the CFN outputs as follows.
+  #
+  #  CFN outputs with the OutputKey having format "MetaConnection<ConnectionAttrib>" or "MetaConnection<N><ConnectionAttrib>"
+  #  are used for extracting connection information.
+  #  - If the environment has only one connection then it can have outputs with "MetaConnection<ConnectionAttrib>" format.
+  #  - If it has multiple connections then it can have outputs with "MetaConnection<N><ConnectionAttrib>" format.
+  #  For example, MetaConnection1Name, MetaConnection2Name, etc.
+  #
+  #  The expected CFN output variables used for capturing connections related information are as follows:
+  #
+  #  - MetaConnectionName (or MetaConnection<N>Name) - Provides name for connection
+  #
+  #  - MetaConnectionUrl (or MetaConnection<N>Url) - Provides connection url, if available
+  #
+  #  - MetaConnectionScheme (or MetaConnection<N>Scheme) - Provides connection protocol information such as http, https, ssh, jdbc, odbc etc
+  #
+  #  - MetaConnectionType (or MetaConnection<N>Type) - Provides type of the connection such as "SageMaker", "EMR", "FOO", "BAR" etc
+  #
+  #  - MetaConnectionInfo (or MetaConnection<N>Info) - Provides extra information required to form connection url.
+  #  For example, in case of MetaConnectionType = SageMaker, the MetaConnectionInfo should provide SageMaker notebook
+  #  instance name that can be used to form pre-signed SageMaker URL.
+  #
+  #  - MetaConnectionInstanceId (or MetaConnection<N>InstanceId) - Provides AWS EC2 instanceId of the instance to connect to when applicable.
+  #  Currently this is applicable only when ConnectionScheme = 'ssh'.
+  #  This instanceId will be used for sending user's SSH public key using AWS EC2 Instance Connect when user wants to SSH to the instance.
+  #
+  MetaConnectionUrl:
+    Description: The streaming url to access the appstream instance
+    Value: !GetAtt FunctionUrl.FunctionUrl
