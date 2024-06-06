@@ -51,7 +51,7 @@ Parameters:
     AllowedValues:
       - mount
       - sync
-  Applications:
+  AppStreamApplications:
     Description: Applications to deploy. Names must be consistent with AppBlock names and Scripts names.
     Type: String
     Default: Stata,Dbeaver,LibreOffice
