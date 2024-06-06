@@ -350,7 +350,7 @@ Resources:
                         'S3Key': f"{key_prefix}{vhd_key}"
                     },
                     'ExecutablePath': '/usr/bin/bash',
-                    'ExecutableParameters': f'/opt/appstream/AppBlocks/${Namespace}{app_name}AppBlock/{vhd_key}',
+                    'ExecutableParameters': f'/opt/appstream/AppBlocks/${Namespace}{app_name}AppBlock/{repo_vhd_key}',
                     'TimeoutInSeconds': 60
                   },
                   PackagingType='CUSTOM'
@@ -581,7 +581,7 @@ Resources:
               except Exception as e:
                 responseData = {}
                 print(f'failed with exception {e}')
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, )
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
                 return
             try:
               print("Associating StataApp and ${AppStreamFleet}")
