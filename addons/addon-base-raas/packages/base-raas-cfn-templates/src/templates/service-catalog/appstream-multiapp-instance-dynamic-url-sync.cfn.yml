@@ -45,12 +45,12 @@ Parameters:
   AppstreamSubnetId:
     Description: Subnet id created to allow appstream to deploy an elastic fleet
     Type: AWS::EC2::Subnet::Id
-  MountOrSync:
-    Description: Chose whether to use mount or sync script for studies
-    Type: String
-    AllowedValues:
-      - mount
-      - sync
+  # MountOrSync:
+  #   Description: Chose whether to use mount or sync script for studies
+  #   Type: String
+  #   AllowedValues:
+  #     - mount
+  #     - sync
   AppStreamApplications:
     Description: Applications to deploy. Names must be consistent with AppBlock names and Scripts names.
     Type: String
@@ -359,7 +359,7 @@ Resources:
                 application_resp = appstream.create_application(
                   Name=f"${Namespace}{app_name}App",
                   AppBlockArn=app_block_resp['AppBlock']['Arn'],
-                  Platforms='AMAZON_LINUX2',
+                  Platforms=['AMAZON_LINUX2'],
                   LaunchPath=f'/mnt/{"stata/app/stata17/xstata-se" if app_name=="Stata" else "dbeaver/app/dbeaver-ce/dbeaver" if app_name=="Dbeaver" else "libreoffice/app/LibreOffice-still.full-x86_64.AppImage" if app_name=="LibreOffice" else ""}',
                   IconS3Location={
                     'S3Bucket': bucket_to_mount,
