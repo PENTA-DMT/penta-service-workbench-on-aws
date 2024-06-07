@@ -270,7 +270,8 @@ Resources:
                   - appstream:DeleteApplication
                   - appstream:DeleteAppBlock
                 Resource:
-                  - !Sub arn:aws:appstream:${AWS::Region}:${AWS::AccountId}:*
+                  - !Sub arn:aws:appstream:${AWS::Region}:${AWS::AccountId}:app-block/${Namespace}*
+                  - !Sub arn:aws:appstream:${AWS::Region}:${AWS::AccountId}:application/${Namespace}*
 
   CreateAppstreamScriptsAndApplications:
     DependsOn:
@@ -336,8 +337,9 @@ Resources:
                 except Exception as e:
                   print(f"Failed deleting app block {app_name} with exception {e}")
               
-            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
-            return
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+              return
+              
             # S3Mounts format example
             # [{"id":"demo_study","readable":true,"writeable":false,"kmsArn":"arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/07853676-9430-4c9b-b3b9-ccfa4fb16dee","bucket":"${AWS::AccountId}-demo-fr-sw-studydata","prefix":"studies/Organization/demo_study/"}]
 
