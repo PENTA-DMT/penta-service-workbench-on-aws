@@ -353,7 +353,7 @@ Resources:
                 'Bucket': repo_bucket,
                 'Key': 'DBeaverData'
             }
-            s3.meta.client.copy(copy_dbeaver_folder, repo_bucket, '${Namespace}/DBeaverData')
+            s3_res.meta.client.copy(copy_dbeaver_folder, repo_bucket, '${Namespace}/DBeaverData')
             
             for repo_vhd_key, vhd_key, app_name in zip(repo_vhd_keys, vhd_keys, applications):
               try:
