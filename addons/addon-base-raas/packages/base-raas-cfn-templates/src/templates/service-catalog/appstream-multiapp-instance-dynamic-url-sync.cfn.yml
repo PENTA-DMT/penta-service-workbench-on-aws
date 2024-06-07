@@ -444,7 +444,8 @@ Resources:
                 print(f"Failed putting object {zipfile_key} with exception {e}")
                 cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
                 return
-              responseData['zipfile_key'] = zipfile_key              
+              responseData['zipfile_key'] = zipfile_key
+              responseData['bucket_name'] = repo_bucket
             
             responseData['zipfile_key'] = ''
             responseData['application_arns_str'] = json.dumps(responseData['application_arns'])
