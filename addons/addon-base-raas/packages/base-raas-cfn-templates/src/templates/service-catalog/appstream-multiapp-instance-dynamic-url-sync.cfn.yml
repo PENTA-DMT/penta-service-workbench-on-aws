@@ -295,7 +295,7 @@ Resources:
             on workspace deletion:
               - deletes resources created in previous steps
             """
-            # print(event['RequestType'])
+            print(event['RequestType'])
             study_attached = '${S3Mounts}' != '[]'
             applications = '${AppStreamApplications}'.split(',')
             responseData = {}
@@ -305,6 +305,7 @@ Resources:
             vhd_keys = [f"${Namespace}/{repo_vhd_key}" for repo_vhd_key in repo_vhd_keys]
             
             if study_attached:
+              print('studies attached')
               app_names.append('studies')
               repo_script_keys = [f'sync_s3_{app_name}_sessionscript.sh' for app_name in app_names]
               repo_config_key = 'sync_multiapp_config.json'
@@ -314,7 +315,7 @@ Resources:
             # key_prefix = "${StudyBucketInfo.prefix}"
             # Check if the request is a delete event
             if event['RequestType'] == 'Delete':
-            
+              print('Deleting resources')
               if study_attached:
                 try:
                   s3.delete_object(Bucket=repo_bucket, Key=zipfile_key)
@@ -361,6 +362,7 @@ Resources:
                 cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
                 return
               
+              print(f'creating {app_name} app block')
               try:
                 app_block_resp = appstream.create_app_block(
                   Name=f"${Namespace}{app_name}AppBlock", 
@@ -384,6 +386,7 @@ Resources:
                 cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
                 return
               
+              print(f'creating {app_name} application')
               try:
                 application_resp = appstream.create_application(
                   Name=f"${Namespace}{app_name}App",
@@ -398,12 +401,11 @@ Resources:
                     'GENERAL_PURPOSE',
                   ],
                 )
+                responseData['application_arns'].append(application_resp['Application']['Arn'])
               except Exception as e:
                 print(f"Failed creating application {app_name} with exception {e}")
                 cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
                 return
-              
-              responseData['application_arns'].append(application_resp['Application']['Arn'])
 
             if study_attached:
               try:
@@ -445,11 +447,11 @@ Resources:
                 cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
                 return
               responseData['zipfile_key'] = zipfile_key
-              responseData['bucket_name'] = repo_bucket
             
             responseData['zipfile_key'] = ''
+            responseData['bucket_name'] = repo_bucket
             responseData['application_arns_str'] = json.dumps(responseData['application_arns'])
-            # print(responseData)
+            print(f'responseData: {responseData}')
             cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
             return
       Role: !GetAtt CreateAppstreamScriptsAndApplicationsRole.Arn
