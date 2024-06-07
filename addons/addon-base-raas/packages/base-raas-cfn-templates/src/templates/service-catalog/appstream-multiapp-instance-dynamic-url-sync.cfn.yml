@@ -320,7 +320,7 @@ Resources:
             if event['RequestType'] == 'Delete':
               print('Deleting resources')
               try:
-                bucket = s3.Bucket(repo_bucket)
+                bucket = s3_res.Bucket(repo_bucket)
                 bucket.objects.filter(Prefix="${Namespace}/").delete()
               except Exception as e:
                 print(f"Failed deleting objects from {repo_bucket}/${Namespace}/ with exception {e}")
@@ -349,11 +349,13 @@ Resources:
             
             responseData['application_arns'] = []
 
-            copy_dbeaver_folder = {
-                'Bucket': repo_bucket,
-                'Key': 'DBeaverData'
-            }
-            s3_res.meta.client.copy(copy_dbeaver_folder, repo_bucket, '${Namespace}/DBeaverData')
+            resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix="DBeaverData")
+            for obj in resp['Contents']:
+              source = {
+                  'Bucket': repo_bucket,
+                  'Key': obj['Key']
+              }
+              s3_res.meta.client.copy(source, repo_bucket, f'${Namespace}/{obj["Key"]}')
             
             for repo_vhd_key, vhd_key, app_name in zip(repo_vhd_keys, vhd_keys, applications):
               try:
