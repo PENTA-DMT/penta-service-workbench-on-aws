@@ -286,6 +286,7 @@ Resources:
           import zipfile
           import io
           s3 = boto3.client('s3')
+          s3_res = boto3.resource('s3')
           appstream = boto3.client('appstream')
           def lambda_handler(event, context):
             """
@@ -306,28 +307,36 @@ Resources:
             repo_vhd_keys = [f'mount-{app_name}-vhd.sh' for app_name in app_names]
             vhd_keys = [f"${Namespace}/{repo_vhd_key}" for repo_vhd_key in repo_vhd_keys]
             
-            if study_attached:
-              print('studies attached')
-              app_names.append('studies')
-              repo_script_keys = [f'sync_s3_{app_name}_sessionscript.sh' for app_name in app_names]
-              repo_config_key = 'sync_multiapp_config.json'
-              zipfile_key = "${Namespace}/multiapp-session_scripts.zip"
+            # if study_attached:
+            #   print('studies attached')
+            app_names.append('studies')
+            repo_script_keys = [f'sync_s3_{app_name}_sessionscript.sh' for app_name in app_names]
+            repo_config_key = 'sync_multiapp_config.json'
+            zipfile_key = "${Namespace}/multiapp-session_scripts.zip"
             
             # bucket_to_mount = repo_bucket
             # key_prefix = "${StudyBucketInfo.prefix}"
             # Check if the request is a delete event
             if event['RequestType'] == 'Delete':
               print('Deleting resources')
-              if study_attached:
-                try:
-                  s3.delete_object(Bucket=repo_bucket, Key=zipfile_key)
-                except Exception as e:
-                  print(f"Failed deleting object {zipfile_key} with exception {e}")
-              for vhd_key in vhd_keys:
-                try:
-                  s3.delete_object(Bucket=repo_bucket, Key=vhd_key)
-                except Exception as e:
-                  print(f"Failed deleting object {vhd_key} with exception {e}")
+              try:
+                resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix=f"${Namespace}/")
+                files_to_delete = [{'Key': obj['Key']} for obj in resp['Contents']]
+                s3_client.delete_objects(
+                    Bucket=repo_bucket, Delete={"Objects": files_to_delete}
+                )
+              except Exception as e:
+                print(f"Failed deleting objects from {repo_bucket}/${Namespace}/ with exception {e}")
+              # if study_attached:
+              #   try:
+              #     s3.delete_object(Bucket=repo_bucket, Key=zipfile_key)
+              #   except Exception as e:
+              #     print(f"Failed deleting object {zipfile_key} with exception {e}")
+              # for vhd_key in vhd_keys:
+              #   try:
+              #     s3.delete_object(Bucket=repo_bucket, Key=vhd_key)
+              #   except Exception as e:
+              #     print(f"Failed deleting object {vhd_key} with exception {e}")
               for app_name in applications:
                 try:
                   appstream.delete_application(Name=f"${Namespace}{app_name}App")
@@ -340,13 +349,14 @@ Resources:
               
               cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
               return
-
-            # S3Mounts format example
-            # [{"id":"demo_study","readable":true,"writeable":false,"kmsArn":"arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/07853676-9430-4c9b-b3b9-ccfa4fb16dee","bucket":"${AWS::AccountId}-demo-fr-sw-studydata","prefix":"studies/Organization/demo_study/"}]
-
-            s3_mounts_str = '${S3Mounts}'
             
             responseData['application_arns'] = []
+
+            copy_dbeaver_folder = {
+                'Bucket': repo_bucket,
+                'Key': 'DBeaverData'
+            }
+            s3.meta.client.copy(copy_dbeaver_folder, repo_bucket, '${Namespace}/DBeaverData')
             
             for repo_vhd_key, vhd_key, app_name in zip(repo_vhd_keys, vhd_keys, applications):
               try:
@@ -410,47 +420,54 @@ Resources:
                 cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
                 return
 
-            if study_attached:
-              try:
-                get_config_resp = s3.get_object(Bucket=repo_bucket, Key=repo_config_key)
-              except Exception as e:
-                print(f"Failed getting object {repo_config_key} with exception {e}")
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
-                return
-              session_config = get_config_resp['Body'].read().decode('utf-8')
-              
-              # create zip file
-              zip_buffer = io.BytesIO()
-              # Create a new zip file in memory
-              with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for repo_script_key in repo_script_keys:
-                  try:
-                    get_script_resp = s3.get_object(Bucket=repo_bucket, Key=repo_script_key)                    
-                    session_script = get_script_resp['Body'].read().decode('utf-8')
-                    if 'sync_s3_studies' in repo_script_key:
-                      session_script = session_script.replace("S3_MOUNTS", s3_mounts_str)
-                  
-                    # Add the file to the zip archive
-                    zipf.writestr(repo_script_key, session_script)
-                  except s3.exceptions.NoSuchKey as e:
-                    print(e)
-                  except Exception as e:
-                    print(f"Failed getting {repo_script_key} with exception {e}")
-                  
-                # Add the second file to the zip archive
-                zipf.writestr('config.json', session_config)               
-                
-              # Reset the buffer to the beginning
-              zip_buffer.seek(0)
-              # Upload the file to S3
-              try:
-                s3.put_object(Body=zip_buffer.read(), Bucket=repo_bucket, Key=zipfile_key, Tagging="AppStreamScript=SessionScript")
-              except Exception as e:
-                print(f"Failed putting object {zipfile_key} with exception {e}")
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
-                return
-              responseData['zipfile_key'] = zipfile_key
+            # if study_attached:
+            try:
+              get_config_resp = s3.get_object(Bucket=repo_bucket, Key=repo_config_key)
+            except Exception as e:
+              print(f"Failed getting object {repo_config_key} with exception {e}")
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
+              return
+            session_config = get_config_resp['Body'].read().decode('utf-8')
             
+            # create zip file
+            zip_buffer = io.BytesIO()
+            # Create a new zip file in memory
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+              for repo_script_key in repo_script_keys:
+                try:
+                  get_script_resp = s3.get_object(Bucket=repo_bucket, Key=repo_script_key)                    
+                  session_script = get_script_resp['Body'].read().decode('utf-8')
+                  if 'sync_s3_studies' in repo_script_key:
+                    # S3Mounts format example
+                    # [{"id":"demo_study","readable":true,"writeable":false,"kmsArn":"arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/07853676-9430-4c9b-b3b9-ccfa4fb16dee","bucket":"${AWS::AccountId}-demo-fr-sw-studydata","prefix":"studies/Organization/demo_study/"}]
+
+                    s3_mounts_str = '${S3Mounts}' if study_attached else ''
+                    session_script = session_script.replace("S3_MOUNTS", s3_mounts_str)
+                
+                  if 'dbeaver' in repo_script_key:
+                    session_script = session_script.replace("OBJECT_KEY", f'${Namespace}/DBeaverData')                  
+                
+                  # Add the file to the zip archive
+                  zipf.writestr(repo_script_key, session_script)
+                except s3.exceptions.NoSuchKey as e:
+                  print(e)
+                except Exception as e:
+                  print(f"Failed getting {repo_script_key} with exception {e}")
+                
+              # Add the second file to the zip archive
+              zipf.writestr('config.json', session_config)               
+              
+            # Reset the buffer to the beginning
+            zip_buffer.seek(0)
+            # Upload the file to S3
+            try:
+              s3.put_object(Body=zip_buffer.read(), Bucket=repo_bucket, Key=zipfile_key, Tagging="AppStreamScript=SessionScript")
+            except Exception as e:
+              print(f"Failed putting object {zipfile_key} with exception {e}")
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
+              return
+            responseData['zipfile_key'] = zipfile_key
+
             responseData['bucket_name'] = repo_bucket
             responseData['application_arns_str'] = json.dumps(responseData['application_arns'])
             print(f'responseData: {responseData}')
@@ -550,11 +567,9 @@ Resources:
       EnableDefaultInternetAccess: true
       MaxConcurrentSessions: 1
       StreamView: DESKTOP
-      SessionScriptS3Location: !If
-        - StudyAttached
+      SessionScriptS3Location:
         - S3Bucket: !GetAtt AppstreamScriptsAndApplicationsInfo.bucket_name
           S3Key: !GetAtt AppstreamScriptsAndApplicationsInfo.zipfile_key
-        - !Ref AWS::NoValue
     CreationPolicy:
       StartFleet: true
 
@@ -756,12 +771,6 @@ Resources:
           # import cfnresponse
           appstream = boto3.client('appstream')
           def lambda_handler(event, context):
-            # print(event['RequestType'])
-            # responseData = {}
-            # # Check if the request is a delete event
-            # if event['RequestType'] == 'Delete':
-            #   cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
-            #   return
             try:
               print("Requesting url")
               resp = appstream.create_streaming_url(StackName="${AppStreamStack}", FleetName="${AppStreamFleet}", UserId='${Namespace}_sw_user', Validity=60)
