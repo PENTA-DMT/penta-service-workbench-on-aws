@@ -300,6 +300,7 @@ Resources:
             study_attached = '${S3Mounts}' != '[]'
             applications = '${AppStreamApplications}'.split(',')
             responseData = {}
+            responseData['zipfile_key'] = ''
             repo_bucket = 'appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86'
             app_names = [name.lower() for name in applications]
             repo_vhd_keys = [f'mount-{app_name}-vhd.sh' for app_name in app_names]
@@ -339,7 +340,7 @@ Resources:
               
               cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
               return
-              
+
             # S3Mounts format example
             # [{"id":"demo_study","readable":true,"writeable":false,"kmsArn":"arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/07853676-9430-4c9b-b3b9-ccfa4fb16dee","bucket":"${AWS::AccountId}-demo-fr-sw-studydata","prefix":"studies/Organization/demo_study/"}]
 
@@ -450,7 +451,6 @@ Resources:
                 return
               responseData['zipfile_key'] = zipfile_key
             
-            responseData['zipfile_key'] = ''
             responseData['bucket_name'] = repo_bucket
             responseData['application_arns_str'] = json.dumps(responseData['application_arns'])
             print(f'responseData: {responseData}')
