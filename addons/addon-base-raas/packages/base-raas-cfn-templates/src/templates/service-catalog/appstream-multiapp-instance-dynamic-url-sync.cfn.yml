@@ -256,9 +256,13 @@ Resources:
                   - s3:PutObject
                   - s3:PutObjectTagging
                   - s3:DeleteObject
-                  - s3:ListBucket
                 Resource:
                   - arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/*
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86
               - Effect: Allow
                 Action:
                   - appstream:CreateApplication
