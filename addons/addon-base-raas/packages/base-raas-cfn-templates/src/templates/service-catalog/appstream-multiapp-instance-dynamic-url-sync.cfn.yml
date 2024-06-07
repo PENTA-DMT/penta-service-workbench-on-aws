@@ -320,11 +320,8 @@ Resources:
             if event['RequestType'] == 'Delete':
               print('Deleting resources')
               try:
-                resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix=f"${Namespace}/")
-                files_to_delete = [{'Key': obj['Key']} for obj in resp['Contents']]
-                s3_client.delete_objects(
-                    Bucket=repo_bucket, Delete={"Objects": files_to_delete}
-                )
+                bucket = s3.Bucket(repo_bucket)
+                bucket.objects.filter(Prefix="${Namespace}/").delete()
               except Exception as e:
                 print(f"Failed deleting objects from {repo_bucket}/${Namespace}/ with exception {e}")
               # if study_attached:
