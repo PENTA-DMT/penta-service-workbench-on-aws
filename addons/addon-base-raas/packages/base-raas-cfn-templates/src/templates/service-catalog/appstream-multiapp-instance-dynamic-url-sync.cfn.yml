@@ -305,7 +305,6 @@ Resources:
             study_attached = '${S3Mounts}' != '[]'
             applications = '${AppStreamApplications}'.split(',')
             responseData = {}
-            responseData['zipfile_key'] = ''
             repo_bucket = 'appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86'
             app_names = [name.lower() for name in applications]
             repo_vhd_keys = [f'mount-{app_name}-vhd.sh' for app_name in app_names]
@@ -328,16 +327,7 @@ Resources:
                 bucket.objects.filter(Prefix="${Namespace}/").delete()
               except Exception as e:
                 print(f"Failed deleting objects from {repo_bucket}/${Namespace}/ with exception {e}")
-              # if study_attached:
-              #   try:
-              #     s3.delete_object(Bucket=repo_bucket, Key=zipfile_key)
-              #   except Exception as e:
-              #     print(f"Failed deleting object {zipfile_key} with exception {e}")
-              # for vhd_key in vhd_keys:
-              #   try:
-              #     s3.delete_object(Bucket=repo_bucket, Key=vhd_key)
-              #   except Exception as e:
-              #     print(f"Failed deleting object {vhd_key} with exception {e}")
+
               for app_name in applications:
                 try:
                   appstream.delete_application(Name=f"${Namespace}{app_name}App")
@@ -571,8 +561,8 @@ Resources:
       MaxConcurrentSessions: 1
       StreamView: DESKTOP
       SessionScriptS3Location:
-        - S3Bucket: !GetAtt AppstreamScriptsAndApplicationsInfo.bucket_name
-          S3Key: !GetAtt AppstreamScriptsAndApplicationsInfo.zipfile_key
+        S3Bucket: !GetAtt AppstreamScriptsAndApplicationsInfo.bucket_name
+        S3Key: !GetAtt AppstreamScriptsAndApplicationsInfo.zipfile_key
     CreationPolicy:
       StartFleet: true
 
