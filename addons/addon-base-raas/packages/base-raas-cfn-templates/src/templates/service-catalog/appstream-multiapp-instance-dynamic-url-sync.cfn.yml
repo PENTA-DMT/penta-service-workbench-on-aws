@@ -353,9 +353,9 @@ Resources:
               s3_res.meta.client.copy(source, repo_bucket, f'${Namespace}/{obj["Key"]}')
             
             # set the correct results location for dbeaver to work
-            datasource_key = "${Namespace}/DBeaverData/workspace6/General/.dbeaver/data-sources.json"
+            datasources_key = "${Namespace}/DBeaverData/workspace6/General/.dbeaver/data-sources.json"
             try:              
-              resp = s3.get_object(Bucket=repo_bucket, Key=datasource_key)
+              resp = s3.get_object(Bucket=repo_bucket, Key=datasources_key)
             except Exception as e:
               print(f"Failed getting object data-sources.json with exception {e}")
             
