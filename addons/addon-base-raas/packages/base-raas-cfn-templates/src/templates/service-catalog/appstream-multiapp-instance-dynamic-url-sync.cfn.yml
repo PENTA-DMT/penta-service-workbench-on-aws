@@ -343,6 +343,7 @@ Resources:
             
             responseData['application_arns'] = []
 
+            # copy dbeaver folder to namespace directory
             resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix="DBeaverData")
             for obj in resp['Contents']:
               source = {
@@ -350,6 +351,18 @@ Resources:
                   'Key': obj['Key']
               }
               s3_res.meta.client.copy(source, repo_bucket, f'${Namespace}/{obj["Key"]}')
+            
+            # set the correct results location for dbeaver to work
+            datasource_key = "${Namespace}/DBeaverData/workspace6/General/.dbeaver/data-sources.json"
+            try:              
+              resp = s3.get_object(Bucket=repo_bucket, Key=datasource_key)
+            except Exception as e:
+              print(f"Failed getting object data-sources.json with exception {e}")
+            
+            data_sources = resp['Body'].read().decode('utf-8')
+            data_sources = data_sources.replace("DATABASE_S3_LOCATION", f"{repo_bucket}/${Namespace}/athena-results")
+
+            s3.put_object(Body=data_sources.encode('utf-8'), Bucket=repo_bucket, Key=datasources_key)
             
             for repo_vhd_key, vhd_key, app_name in zip(repo_vhd_keys, vhd_keys, applications):
               try:
