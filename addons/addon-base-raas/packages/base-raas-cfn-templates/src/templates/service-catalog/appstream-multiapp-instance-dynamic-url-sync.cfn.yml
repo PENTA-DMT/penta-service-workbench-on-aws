@@ -438,7 +438,9 @@ Resources:
                     session_script = session_script.replace("S3_MOUNTS", s3_mounts_str)
                 
                   if 'dbeaver' in repo_script_key:
-                    session_script = session_script.replace("OBJECT_KEY", f'${Namespace}/DBeaverData')                  
+                    session_script = session_script.replace("OBJECT_KEY", f'${Namespace}/DBeaverData')
+                  if 'stata' in repo_script_key:
+                    session_script = session_script.replace("OBJECT_KEY", f'${Namespace}/stata17')
                 
                   # Add the file to the zip archive
                   zipf.writestr(repo_script_key, session_script)
