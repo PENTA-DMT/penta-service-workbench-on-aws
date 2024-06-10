@@ -512,10 +512,12 @@ Resources:
                   - !Sub arn:aws:s3:::cloudformation-custom-resource-response-${AWS::Region}
                   - !Sub arn:aws:s3:::cloudformation-custom-resource-response-${AWS::Region}/*
               - Effect: Allow
-                Action: s3:GetObject
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
                 Resource:
                   - !Sub arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/${Namespace}/*
-                  - arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/goofys
+                  - "arn:aws:s3:::data-transfer-dev-b426e2d7-3948-42ae-bc73-a42611b38c30/EPPICC/*"
               - Effect: Allow
                 Action: s3:ListBucket
                 Resource: arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86
@@ -523,6 +525,9 @@ Resources:
                   StringLike:
                     s3:prefix:
                       - !Sub ${Namespace}/*
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: "arn:aws:s3:::data-transfer-dev-b426e2d7-3948-42ae-bc73-a42611b38c30"
         - PolicyName: !Sub ${Namespace}-appstream-access-study-buckets
           PolicyDocument: !If
             - StudyAttached
