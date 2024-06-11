@@ -8,6 +8,7 @@
 .pnpm-store/*
 **/.pnpm-store/*
 
+.venv
 .build
 docs/build
 
@@ -41,3 +42,4 @@ source/ServiceWorkbenchOnAWS/main/solution/machine-images/config/infra/files/rst
 
 # temp packer log files
 main/solution/machine-images/*_build.log
+test_policy.py

@@ -353,7 +353,7 @@ Resources:
               s3_res.meta.client.copy(source, repo_bucket, f'${Namespace}/{obj["Key"]}')
             
             # copy create_report scripts to namespace directory
-            resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix="create_report")
+            resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix="create_report_scripts")
             for obj in resp['Contents']:
               source = {
                   'Bucket': repo_bucket,
@@ -461,7 +461,7 @@ Resources:
                 
                   if 'dbeaver' in repo_script_key:
                     session_script = session_script.replace("OBJECT_KEY", f'${Namespace}/DBeaverData')
-                    session_script = session_script.replace("NAMESPACE", '${Namespace}')
+                    session_script = session_script.replace("NAMESPACE", '${Namespace}/create_report_scripts')
 
                   if 'stata' in repo_script_key:
                     session_script = session_script.replace("OBJECT_KEY", f'${Namespace}/stata17')
