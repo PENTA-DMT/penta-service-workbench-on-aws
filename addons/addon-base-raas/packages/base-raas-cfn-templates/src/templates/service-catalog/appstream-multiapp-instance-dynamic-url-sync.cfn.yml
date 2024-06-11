@@ -352,6 +352,15 @@ Resources:
               }
               s3_res.meta.client.copy(source, repo_bucket, f'${Namespace}/{obj["Key"]}')
             
+            # copy create_report scripts to namespace directory
+            resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix="create_report")
+            for obj in resp['Contents']:
+              source = {
+                  'Bucket': repo_bucket,
+                  'Key': obj['Key']
+              }
+              s3_res.meta.client.copy(source, repo_bucket, f'${Namespace}/{obj["Key"]}')
+            
             # set the correct results location for dbeaver to work
             datasources_key = "${Namespace}/DBeaverData/workspace6/General/.dbeaver/data-sources.json"
             try:              
@@ -452,6 +461,8 @@ Resources:
                 
                   if 'dbeaver' in repo_script_key:
                     session_script = session_script.replace("OBJECT_KEY", f'${Namespace}/DBeaverData')
+                    session_script = session_script.replace("NAMESPACE", '${Namespace}')
+
                   if 'stata' in repo_script_key:
                     session_script = session_script.replace("OBJECT_KEY", f'${Namespace}/stata17')
                 
