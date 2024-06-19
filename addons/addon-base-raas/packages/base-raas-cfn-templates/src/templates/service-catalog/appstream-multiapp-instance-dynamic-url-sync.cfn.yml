@@ -170,7 +170,11 @@ Resources:
             else:
               try:
                 s3_mounts = json.loads(s3_mounts_str)
+                
                 external_study_policy = '{"Version": "2012-10-17","Statement": ['
+                study_ids = [study["id"].split('-')[0] for study in s3_mounts]
+                if 'eppicc' in study_ids:
+                  external_study_policy += '{"Sid": "BaseAthenaPermissions","Effect": "Allow","Action": ["athena:*"],"Resource": ["*"]},{"Sid": "BaseGluePermissions","Effect": "Allow","Action": ["glue:CreateDatabase","glue:DeleteDatabase","glue:GetDatabase","glue:GetDatabases","glue:UpdateDatabase","glue:CreateTable","glue:DeleteTable","glue:BatchDeleteTable","glue:UpdateTable","glue:GetTable","glue:GetTables","glue:BatchCreatePartition","glue:CreatePartition","glue:DeletePartition","glue:BatchDeletePartition","glue:UpdatePartition","glue:GetPartition","glue:GetPartitions","glue:BatchGetPartition","glue:StartColumnStatisticsTaskRun","glue:GetColumnStatisticsTaskRun","glue:GetColumnStatisticsTaskRuns"],"Resource": ["arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog","arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/eppicc*","arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/*","arn:aws:glue:${AWS::Region}:${AWS::AccountId}:userDefinedFunction/*","arn:aws:glue:${AWS::Region}:${AWS::AccountId}:connection/eppicc*"]},'
                 # find read only and readwrite external studies
                 read_studies = [study for study in s3_mounts if 'roleArn' in study.keys() and study['roleArn'] and not study['writeable']]
                 readwrite_studies = [study for study in s3_mounts if 'roleArn' in study.keys() and study['roleArn'] and study['writeable']]
@@ -521,7 +525,6 @@ Resources:
               - sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonAppStreamServiceAccess
-        - arn:aws:iam::aws:policy/AmazonAthenaFullAccess
       Policies:
         - PolicyName: !Join
             - "-"
@@ -541,17 +544,18 @@ Resources:
                   - s3:PutObject
                 Resource:
                   - !Sub arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/${Namespace}/*
-                  - "arn:aws:s3:::data-transfer-dev-b426e2d7-3948-42ae-bc73-a42611b38c30/EPPICC/*"
               - Effect: Allow
-                Action: s3:ListBucket
+                Action:
+                  - s3:ListBucket
                 Resource: arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86
                 Condition:
                   StringLike:
                     s3:prefix:
                       - !Sub ${Namespace}/*
               - Effect: Allow
-                Action: s3:ListBucket
-                Resource: "arn:aws:s3:::data-transfer-dev-b426e2d7-3948-42ae-bc73-a42611b38c30"
+                Action:
+                  - s3:GetBucketLocation
+                Resource: "arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86"
         - PolicyName: !Sub ${Namespace}-appstream-access-study-buckets
           PolicyDocument: !If
             - StudyAttached
