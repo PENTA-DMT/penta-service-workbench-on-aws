@@ -198,9 +198,9 @@ Resources:
                       prefixes += f'"{study["prefix"]}*",'
                   resources = resources[:-1]
                   prefixes = prefixes[:-1]
-                  external_study_policy += f'{{"Sid": "studyListS3Access1","Effect": "Allow","Action": ["s3:ListBucket","s3:ListBucketVersions"],"Resource": [{resources}],"Condition": {{"StringLike": {{"s3:prefix": [{prefixes}]}}}}}}'
-                  vpc_endpoint = '${VPCEndpoint}'
-                  external_study_policy += f',{{"Sid": "AllowAccessFromVPCEndpoint","Effect": "Deny", "Action": ["s3:Get*","s3:List*","s3:Put*","s3:Delete*","s3:AbortMultipartUpload","s3:ListMultipartUploadParts"], "Resource": [{resources}], "Condition": {{"StringNotEquals": {{"aws:SourceVpce": "{vpc_endpoint}"}},"StringLike": {{"s3:prefix": [{prefixes}]}}}}}}]}}'
+                  external_study_policy += f'{{"Sid": "studyListS3Access1","Effect": "Allow","Action": ["s3:ListBucket","s3:ListBucketVersions"],"Resource": [{resources}],"Condition": {{"StringLike": {{"s3:prefix": [{prefixes}]}}}}}}]}}'
+                  # vpc_endpoint = '${VPCEndpoint}'
+                  # external_study_policy += f',{{"Sid": "AllowAccessFromVPCEndpoint","Effect": "Deny", "Action": ["s3:Get*","s3:List*","s3:Put*","s3:Delete*","s3:AbortMultipartUpload","s3:ListMultipartUploadParts"], "Resource": [{resources}], "Condition": {{"StringNotEquals": {{"aws:SourceVpce": "{vpc_endpoint}"}},"StringLike": {{"s3:prefix": [{prefixes}]}}}}}}]}}'
                 else:
                   external_study_policy += '{"Effect": "Allow", "Action":"s3:ListBucket", "Resource":"arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86"}]}'
                 study_bucket_name = s3_mounts[0]['bucket']
