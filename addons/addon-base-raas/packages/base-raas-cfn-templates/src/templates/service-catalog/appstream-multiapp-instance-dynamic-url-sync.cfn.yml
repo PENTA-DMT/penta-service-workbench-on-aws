@@ -52,7 +52,8 @@ Parameters:
   #     - mount
   #     - sync
   AppStreamApplications:
-    Description: Applications to deploy. Names must be consistent with AppBlock names and Scripts names.
+    Description: Applications to deploy. Names must be consistent with AppBlock
+      names and Scripts names.
     Type: String
     Default: Stata,Dbeaver,LibreOffice
   ClipboardCopyFromLocalDevice:
@@ -170,7 +171,6 @@ Resources:
             else:
               try:
                 s3_mounts = json.loads(s3_mounts_str)
-                
                 external_study_policy = '{"Version": "2012-10-17","Statement": ['
                 study_ids = [study["id"].split('-')[0] for study in s3_mounts]
                 if 'eppicc' in study_ids:
@@ -313,14 +313,12 @@ Resources:
             app_names = [name.lower() for name in applications]
             repo_vhd_keys = [f'mount-{app_name}-vhd.sh' for app_name in app_names]
             vhd_keys = [f"${Namespace}/{repo_vhd_key}" for repo_vhd_key in repo_vhd_keys]
-            
             # if study_attached:
             #   print('studies attached')
             app_names.append('studies')
             repo_script_keys = [f'sync_s3_{app_name}_sessionscript.sh' for app_name in app_names]
             repo_config_key = 'sync_multiapp_config.json'
             zipfile_key = "${Namespace}/multiapp-session_scripts.zip"
-            
             # bucket_to_mount = repo_bucket
             # key_prefix = "${StudyBucketInfo.prefix}"
             # Check if the request is a delete event
@@ -331,7 +329,6 @@ Resources:
                 bucket.objects.filter(Prefix="${Namespace}/").delete()
               except Exception as e:
                 print(f"Failed deleting objects from {repo_bucket}/${Namespace}/ with exception {e}")
-
               for app_name in applications:
                 try:
                   appstream.delete_application(Name=f"${Namespace}{app_name}App")
@@ -341,12 +338,9 @@ Resources:
                   appstream.delete_app_block(Name=f"${Namespace}{app_name}AppBlock")
                 except Exception as e:
                   print(f"Failed deleting app block {app_name} with exception {e}")
-              
               cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
               return
-            
             responseData['application_arns'] = []
-
             # copy dbeaver folder to namespace directory
             resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix="DBeaverData")
             for obj in resp['Contents']:
@@ -355,7 +349,6 @@ Resources:
                   'Key': obj['Key']
               }
               s3_res.meta.client.copy(source, repo_bucket, f'${Namespace}/{obj["Key"]}')
-            
             # copy create_report scripts to namespace directory
             resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix="create_report_scripts")
             for obj in resp['Contents']:
@@ -364,19 +357,15 @@ Resources:
                   'Key': obj['Key']
               }
               s3_res.meta.client.copy(source, repo_bucket, f'${Namespace}/{obj["Key"]}')
-            
             # set the correct results location for dbeaver to work
             datasources_key = "${Namespace}/DBeaverData/workspace6/General/.dbeaver/data-sources.json"
-            try:              
+            try:
               resp = s3.get_object(Bucket=repo_bucket, Key=datasources_key)
             except Exception as e:
               print(f"Failed getting object data-sources.json with exception {e}")
-            
             data_sources = resp['Body'].read().decode('utf-8')
             data_sources = data_sources.replace("DATABASE_S3_LOCATION", f"{repo_bucket}/${Namespace}/athena-results")
-
             s3.put_object(Body=data_sources.encode('utf-8'), Bucket=repo_bucket, Key=datasources_key)
-            
             for repo_vhd_key, vhd_key, app_name in zip(repo_vhd_keys, vhd_keys, applications):
               try:
                 get_vhd_resp = s3.get_object(Bucket=repo_bucket, Key=repo_vhd_key)
@@ -386,20 +375,18 @@ Resources:
                 return
               vhd_script = get_vhd_resp['Body'].read().decode('utf-8')
               vhd_script = vhd_script.replace("AppBlockName", f"${Namespace}{app_name}AppBlock")
-              
               try:
                 s3.put_object(Body=vhd_script.encode('utf-8'), Bucket=repo_bucket, Key=vhd_key)
               except Exception as e:
                 print(f"Failed putting object {vhd_key} with exception {e}")
                 cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
                 return
-              
               print(f'creating {app_name} app block')
               try:
                 app_block_resp = appstream.create_app_block(
-                  Name=f"${Namespace}{app_name}AppBlock", 
+                  Name=f"${Namespace}{app_name}AppBlock",
                   SourceS3Location={
-                    'S3Bucket':repo_bucket, 
+                    'S3Bucket':repo_bucket,
                     'S3Key':f"{app_name.lower()}.tar.gz"
                   },
                   SetupScriptDetails={
@@ -417,7 +404,6 @@ Resources:
                 print(f"Failed creating app block {app_name} with exception {e}")
                 cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
                 return
-              
               print(f'creating {app_name} application')
               try:
                 application_resp = appstream.create_application(
@@ -438,7 +424,6 @@ Resources:
                 print(f"Failed creating application {app_name} with exception {e}")
                 cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
                 return
-
             # if study_attached:
             try:
               get_config_resp = s3.get_object(Bucket=repo_bucket, Key=repo_config_key)
@@ -447,39 +432,34 @@ Resources:
               cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
               return
             session_config = get_config_resp['Body'].read().decode('utf-8')
-            
             # create zip file
             zip_buffer = io.BytesIO()
             # Create a new zip file in memory
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
               for repo_script_key in repo_script_keys:
                 try:
-                  get_script_resp = s3.get_object(Bucket=repo_bucket, Key=repo_script_key)                    
+                  get_script_resp = s3.get_object(Bucket=repo_bucket, Key=repo_script_key)
                   session_script = get_script_resp['Body'].read().decode('utf-8')
                   if 'sync_s3_studies' in repo_script_key:
                     # S3Mounts format example
                     # [{"id":"demo_study","readable":true,"writeable":false,"kmsArn":"arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/07853676-9430-4c9b-b3b9-ccfa4fb16dee","bucket":"${AWS::AccountId}-demo-fr-sw-studydata","prefix":"studies/Organization/demo_study/"}]
-
                     s3_mounts_str = '${S3Mounts}' if study_attached else ''
                     session_script = session_script.replace("S3_MOUNTS", s3_mounts_str)
-                
                   if 'dbeaver' in repo_script_key:
                     session_script = session_script.replace("OBJECT_KEY", f'${Namespace}/DBeaverData')
                     session_script = session_script.replace("NAMESPACE", '${Namespace}/create_report_scripts')
-
+                    jre_script = s3.get_object(Bucket=repo_bucket, Key='install_jre_sessionscript.sh')
+                    zipf.writestr('install_jre_sessionscript.sh', jre_script['Body'].read().decode('utf-8'))
                   if 'stata' in repo_script_key:
                     session_script = session_script.replace("OBJECT_KEY", f'${Namespace}/stata17')
-                
                   # Add the file to the zip archive
                   zipf.writestr(repo_script_key, session_script)
                 except s3.exceptions.NoSuchKey as e:
                   print(e)
                 except Exception as e:
                   print(f"Failed getting {repo_script_key} with exception {e}")
-                
               # Add the second file to the zip archive
-              zipf.writestr('config.json', session_config)               
-              
+              zipf.writestr('config.json', session_config)
             # Reset the buffer to the beginning
             zip_buffer.seek(0)
             # Upload the file to S3
@@ -490,7 +470,6 @@ Resources:
               cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
               return
             responseData['zipfile_key'] = zipfile_key
-
             responseData['bucket_name'] = repo_bucket
             responseData['application_arns_str'] = json.dumps(responseData['application_arns'])
             print(f'responseData: {responseData}')
@@ -555,7 +534,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetBucketLocation
-                Resource: "arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86"
+                Resource: arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86
         - PolicyName: !Sub ${Namespace}-appstream-access-study-buckets
           PolicyDocument: !If
             - StudyAttached
