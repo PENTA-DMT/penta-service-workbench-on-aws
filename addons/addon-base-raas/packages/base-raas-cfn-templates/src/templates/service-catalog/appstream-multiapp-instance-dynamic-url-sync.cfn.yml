@@ -448,8 +448,6 @@ Resources:
                   if 'dbeaver' in repo_script_key:
                     session_script = session_script.replace("OBJECT_KEY", f'${Namespace}/DBeaverData')
                     session_script = session_script.replace("NAMESPACE", '${Namespace}/create_report_scripts')
-                    jre_script = s3.get_object(Bucket=repo_bucket, Key='install_jre_sessionscript.sh')
-                    zipf.writestr('install_jre_sessionscript.sh', jre_script['Body'].read().decode('utf-8'))
                   if 'stata' in repo_script_key:
                     session_script = session_script.replace("OBJECT_KEY", f'${Namespace}/stata17')
                   # Add the file to the zip archive
