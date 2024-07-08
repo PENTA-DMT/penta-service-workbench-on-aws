@@ -151,6 +151,7 @@ Resources:
         ZipFile: !Sub |
           import cfnresponse
           import json
+          import boto3
           def lambda_handler(event, context):
             print(event['RequestType'])
             responseData = {}
@@ -161,6 +162,7 @@ Resources:
             # S3Mounts format example
             # [{"id":"demo_study","readable":true,"writeable":false,"kmsArn":"arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/07853676-9430-4c9b-b3b9-ccfa4fb16dee","bucket":"${AWS::AccountId}-demo-fr-sw-studydata","prefix":"studies/Organization/demo_study/"}]
             s3_mounts_str = '${S3Mounts}'
+            responseData['RDSSgId']=''
             # if no study is attached, return empty bucket_name, prefix and policy
             if s3_mounts_str == '[]':
               responseData['bucket_name'] = ''
@@ -170,6 +172,10 @@ Resources:
               return
             else:
               try:
+                if 'EPPICC-renal' in s3_mounts_str:
+                  rds = boto3.client('rds')
+                  resp=rds.describe_db_clusters(DBClusterIdentifier='renal-serverless-db-test')
+                  responseData['RDSSgId'] = resp['DBClusters'][0]['VpcSecurityGroups'][0]['VpcSecurityGroupId']
                 s3_mounts = json.loads(s3_mounts_str)
                 external_study_policy = '{"Version": "2012-10-17","Statement": ['
                 study_ids = [study["id"].split('-')[0] for study in s3_mounts]
@@ -726,6 +732,10 @@ Resources:
           FromPort: 443
           ToPort: 443
           CidrIp: !Ref AccessFromCIDRBlock
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref RdsDbSgId
       Tags:
         - Key: Name
           Value: !Join
@@ -735,6 +745,29 @@ Resources:
         - Key: Description
           Value: Appstream workspace security group
       VpcId: !Ref VPC
+
+  WSSgIngressRule:
+    DependsOn: !GetAtt StudyBucketInfo.RDSSgId
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      FromPort: 3306
+      GroupId: !GetAtt SecurityGroup.GroupId
+      IpProtocol: tcp
+      SourceSecurityGroupId: !GetAtt StudyBucketInfo.RDSSgId
+      ToPort: 3306
+  
+  DbSgIngressRule: 
+    DependsOn: !GetAtt StudyBucketInfo.RDSSgId
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      FromPort: 3306
+      GroupId: !GetAtt StudyBucketInfo.RDSSgId
+      IpProtocol: tcp
+      SourceSecurityGroupId: !GetAtt SecurityGroup.GroupId
+      ToPort: 3306
+    
+    
+
 
   GetStreamingUrlRole:
     Type: AWS::IAM::Role
