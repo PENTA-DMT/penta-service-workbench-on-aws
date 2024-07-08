@@ -173,15 +173,14 @@ Resources:
                 s3_mounts = json.loads(s3_mounts_str)
                 external_study_policy = '{"Version": "2012-10-17","Statement": ['
                 study_ids = [study["id"].split('-')[0] for study in s3_mounts]
-                if 'eppicc' in study_ids:
-                  external_study_policy += '{"Sid": "BaseAthenaPermissions","Effect": "Allow","Action": ["athena:*"],"Resource": ["*"]},{"Sid": "BaseGluePermissions","Effect": "Allow","Action": ["glue:CreateDatabase","glue:DeleteDatabase","glue:GetDatabase","glue:GetDatabases","glue:UpdateDatabase","glue:CreateTable","glue:DeleteTable","glue:BatchDeleteTable","glue:UpdateTable","glue:GetTable","glue:GetTables","glue:BatchCreatePartition","glue:CreatePartition","glue:DeletePartition","glue:BatchDeletePartition","glue:UpdatePartition","glue:GetPartition","glue:GetPartitions","glue:BatchGetPartition","glue:StartColumnStatisticsTaskRun","glue:GetColumnStatisticsTaskRun","glue:GetColumnStatisticsTaskRuns"],"Resource": ["arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog","arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/eppicc*","arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/*","arn:aws:glue:${AWS::Region}:${AWS::AccountId}:userDefinedFunction/*","arn:aws:glue:${AWS::Region}:${AWS::AccountId}:connection/eppicc*"]},'
+                
                 # find read only and readwrite external studies
                 read_studies = [study for study in s3_mounts if 'roleArn' in study.keys() and study['roleArn'] and not study['writeable']]
                 readwrite_studies = [study for study in s3_mounts if 'roleArn' in study.keys() and study['roleArn'] and study['writeable']]
                 # build the policy document
                 if read_studies or readwrite_studies:
                   resources = ''
-                  for study in read_studies+readwrite_studies:
+                  for study in set(read_studies+readwrite_studies):
                     resources += f'"arn:aws:s3:::{study['bucket']}/{study['prefix']}*",'
                   resources = resources[:-1]
                   external_study_policy += f'{{"Sid": "S3StudyReadAccess","Effect": "Allow","Action":["s3:GetObject","s3:GetObjectTagging","s3:GetObjectVersion","s3:GetObjectVersionTagging"],"Resource":[{resources}]}},'
@@ -193,14 +192,14 @@ Resources:
                       external_study_policy += f'{{"Sid": "S3StudyReadWriteAccess","Effect": "Allow","Action": ["s3:AbortMultipartUpload","s3:ListMultipartUploadParts","s3:PutObject","s3:PutObjectAcl","s3:PutObjectTagging","s3:PutObjectVersionTagging","s3:DeleteObject","s3:DeleteObjectTagging","s3:DeleteObjectVersion","s3:DeleteObjectVersionTagging"],"Resource": [{resources}]}},'
                   resources=''
                   prefixes = ''
-                  for study in read_studies+readwrite_studies:
+                  for study in set(read_studies+readwrite_studies):
                       resources += f'"arn:aws:s3:::{study['bucket']}",'
                       prefixes += f'"{study["prefix"]}*",'
                   resources = resources[:-1]
                   prefixes = prefixes[:-1]
                   external_study_policy += f'{{"Sid": "studyListS3Access1","Effect": "Allow","Action": ["s3:ListBucket","s3:ListBucketVersions"],"Resource": [{resources}],"Condition": {{"StringLike": {{"s3:prefix": [{prefixes}]}}}}}}]}}'
-                  # vpc_endpoint = '${VPCEndpoint}'
-                  # external_study_policy += f',{{"Sid": "AllowAccessFromVPCEndpoint","Effect": "Deny", "Action": ["s3:Get*","s3:List*","s3:Put*","s3:Delete*","s3:AbortMultipartUpload","s3:ListMultipartUploadParts"], "Resource": [{resources}], "Condition": {{"StringNotEquals": {{"aws:SourceVpce": "{vpc_endpoint}"}},"StringLike": {{"s3:prefix": [{prefixes}]}}}}}}]}}'
+                  vpc_endpoint = '${VPCEndpoint}'
+                  external_study_policy += f',{{"Sid": "AllowAccessFromVPCEndpoint","Effect": "Deny", "Action": ["s3:Get*","s3:List*","s3:Put*","s3:Delete*","s3:AbortMultipartUpload","s3:ListMultipartUploadParts"], "Resource": [{resources}], "Condition": {{"StringNotEquals": {{"aws:SourceVpce": "{vpc_endpoint}"}},"StringLike": {{"s3:prefix": [{prefixes}]}}}}}}]}}'
                 else:
                   external_study_policy += '{"Effect": "Allow", "Action":"s3:ListBucket", "Resource":"arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86"}]}'
                 study_bucket_name = s3_mounts[0]['bucket']
@@ -340,6 +339,7 @@ Resources:
                   print(f"Failed deleting app block {app_name} with exception {e}")
               cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
               return
+            
             responseData['application_arns'] = []
             # copy dbeaver folder to namespace directory
             resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix="DBeaverData")
@@ -358,14 +358,14 @@ Resources:
               }
               s3_res.meta.client.copy(source, repo_bucket, f'${Namespace}/{obj["Key"]}')
             # set the correct results location for dbeaver to work
-            datasources_key = "${Namespace}/DBeaverData/workspace6/General/.dbeaver/data-sources.json"
-            try:
-              resp = s3.get_object(Bucket=repo_bucket, Key=datasources_key)
-            except Exception as e:
-              print(f"Failed getting object data-sources.json with exception {e}")
-            data_sources = resp['Body'].read().decode('utf-8')
-            data_sources = data_sources.replace("DATABASE_S3_LOCATION", f"{repo_bucket}/${Namespace}/athena-results")
-            s3.put_object(Body=data_sources.encode('utf-8'), Bucket=repo_bucket, Key=datasources_key)
+            # datasources_key = "${Namespace}/DBeaverData/workspace6/General/.dbeaver/data-sources.json"
+            # try:
+            #   resp = s3.get_object(Bucket=repo_bucket, Key=datasources_key)
+            # except Exception as e:
+            #   print(f"Failed getting object data-sources.json with exception {e}")
+            # data_sources = resp['Body'].read().decode('utf-8')
+            # data_sources = data_sources.replace("DATABASE_S3_LOCATION", f"{repo_bucket}/${Namespace}/athena-results")
+            # s3.put_object(Body=data_sources.encode('utf-8'), Bucket=repo_bucket, Key=datasources_key)
             for repo_vhd_key, vhd_key, app_name in zip(repo_vhd_keys, vhd_keys, applications):
               try:
                 get_vhd_resp = s3.get_object(Bucket=repo_bucket, Key=repo_vhd_key)
@@ -436,6 +436,9 @@ Resources:
             zip_buffer = io.BytesIO()
             # Create a new zip file in memory
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+              get_imgviewer = s3.get_object(Bucket=repo_bucket, Key='install_image_viewer_sessionscript.sh')
+              imgviewer_script = get_imgviewer['Body'].read().decode('utf-8')
+              zipf.writestr('install_image_viewer_sessionscript.sh', imgviewer_script)
               for repo_script_key in repo_script_keys:
                 try:
                   get_script_resp = s3.get_object(Bucket=repo_bucket, Key=repo_script_key)
