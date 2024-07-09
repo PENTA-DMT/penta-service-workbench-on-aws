@@ -162,7 +162,7 @@ Resources:
             # S3Mounts format example
             # [{"id":"demo_study","readable":true,"writeable":false,"kmsArn":"arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/07853676-9430-4c9b-b3b9-ccfa4fb16dee","bucket":"${AWS::AccountId}-demo-fr-sw-studydata","prefix":"studies/Organization/demo_study/"}]
             s3_mounts_str = '${S3Mounts}'
-            responseData['RDSSgId']=''
+            responseData['RDSSgId']='pass'
             # if no study is attached, return empty bucket_name, prefix and policy
             if s3_mounts_str == '[]':
               responseData['bucket_name'] = ''
@@ -772,14 +772,18 @@ Resources:
               - AddSgRulesPolicy
           PolicyDocument:
             Version: "2012-10-17"
-            Statement:
+            Statement: 
               - Effect: Allow
                 Action:
                   - ec2:AuthorizeSecurityGroupIngress
                   - ec2:RevokeSecurityGroupIngress
                 Resource: 
+                  - !If 
+                    - !Equals [StudyBucketInfo.RdsSgId, 'pass']
+                    - !GetAtt SecurityGroup.GroupId
+                    - !GetAtt StudyBucketInfo.RdsSgId
                   - !GetAtt SecurityGroup.GroupId
-                  - !GetAtt StudyBucketInfo.RdsSgId
+                  
         
   AddSgRules:
     Type: AWS::Lambda::Function
