@@ -172,7 +172,7 @@ Resources:
               return
             else:
               try:
-                if 'EPPICC-renal' in s3_mounts_str:
+                if 'EPPICC' in s3_mounts_str:
                   rds = boto3.client('rds')
                   resp=rds.describe_db_clusters(DBClusterIdentifier='renal-serverless-db-test')
                   responseData['RDSSgId'] = resp['DBClusters'][0]['VpcSecurityGroups'][0]['VpcSecurityGroupId']
@@ -722,6 +722,10 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: EC2 workspace security group
+      GroupName: !Join
+        - "-"
+        - - !Ref Namespace
+          - workspace-sg
       SecurityGroupEgress:
         - IpProtocol: tcp
           FromPort: 0
@@ -732,10 +736,6 @@ Resources:
           FromPort: 443
           ToPort: 443
           CidrIp: !Ref AccessFromCIDRBlock
-        - IpProtocol: tcp
-          FromPort: 3306
-          ToPort: 3306
-          SourceSecurityGroupId: !Ref RdsDbSgId
       Tags:
         - Key: Name
           Value: !Join
@@ -746,28 +746,89 @@ Resources:
           Value: Appstream workspace security group
       VpcId: !Ref VPC
 
-  WSSgIngressRule:
-    DependsOn: !GetAtt StudyBucketInfo.RDSSgId
-    Type: AWS::EC2::SecurityGroupIngress
+  AddSgRulesRole:
+    Type: AWS::IAM::Role
     Properties:
-      FromPort: 3306
-      GroupId: !GetAtt SecurityGroup.GroupId
-      IpProtocol: tcp
-      SourceSecurityGroupId: !GetAtt StudyBucketInfo.RDSSgId
-      ToPort: 3306
-  
-  DbSgIngressRule: 
-    DependsOn: !GetAtt StudyBucketInfo.RDSSgId
-    Type: AWS::EC2::SecurityGroupIngress
+      RoleName: !Join
+        - "-"
+        - - !Ref Namespace
+          - AddSgRulesRole
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: !Join
+            - "-"
+            - - !Ref Namespace
+              - AddSgRulesPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:RevokeSecurityGroupIngress
+                Resource: 
+                  - !GetAtt SecurityGroup.GroupId
+                  - !GetAtt StudyBucketInfo.RdsSgId
+        
+  AddSgRules:
+    Type: AWS::Lambda::Function
     Properties:
-      FromPort: 3306
-      GroupId: !GetAtt StudyBucketInfo.RDSSgId
-      IpProtocol: tcp
-      SourceSecurityGroupId: !GetAtt SecurityGroup.GroupId
-      ToPort: 3306
-    
-    
-
+      Code:
+        ZipFile: !Sub |
+          import boto3
+          import cfnresponse
+          ec2 = boto3.client('ec2')
+          def lambda_handler(event, context):
+            print(event['RequestType'])
+            responseData = {}
+            rds_sg_id = '${StudyBucketInfo.RdsSgId}'
+            if rds_sg_id == '':
+              responseData = {}
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
+              return
+            ws_sg_id = '${SecurityGroup}'
+            ws_sg_name = '${SecurityGroup.GroupName}'
+            
+            rds_sg_name = ec2.describe_security_groups(GroupIds=[rds_sg_id])['SecurityGroups'][0]['GroupName']
+            if event['RequestType']=='Delete':
+              try:
+                print("Revoking ingress rules")
+                
+                ec2.revoke_security_group_ingress(FromPort=3306, ToPort=3306, IpProtocol='tcp', GroupId=ws_sg_id, SourceSecurityGroupName=rds_sg_name)
+                ec2.revoke_security_group_ingress(FromPort=3306, ToPort=3306, IpProtocol='tcp', GroupId=rds_sg_id, SourceSecurityGroupName=ws_sg_name)
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
+                return
+              except Exception as e:
+                responseData = {}
+                print(f'failed with exception {e}')
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
+                return
+            try:
+              print("Authorizing ingress rules")
+              ec2.authorize_security_group_ingress(FromPort=3306, ToPort=3306, IpProtocol='tcp', GroupId=ws_sg_id, SourceSecurityGroupName=rds_sg_name)
+              ec2.authorize_security_group_ingress(FromPort=3306, ToPort=3306, IpProtocol='tcp', GroupId=rds_sg_id, SourceSecurityGroupName=ws_sg_name)
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
+              return
+            except Exception as e:
+              responseData = {}
+              print(f'failed with exception {e}')
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, )
+              return
+      Role: !GetAtt AddSgRulesRole.Arn
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Timeout: 30
 
   GetStreamingUrlRole:
     Type: AWS::IAM::Role
