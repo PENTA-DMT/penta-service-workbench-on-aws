@@ -143,6 +143,9 @@ Resources:
                 Resource:
                   - !Sub arn:aws:s3:::cloudformation-custom-resource-response-${AWS::Region}
                   - !Sub arn:aws:s3:::cloudformation-custom-resource-response-${AWS::Region}/*
+              - Effect: Allow
+                Action: rds:DescribeDbClusters
+                Resource: !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster:renal-serverless-db-test
 
   GetStudyInfo:
     Type: AWS::Lambda::Function
@@ -162,7 +165,7 @@ Resources:
             # S3Mounts format example
             # [{"id":"demo_study","readable":true,"writeable":false,"kmsArn":"arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/07853676-9430-4c9b-b3b9-ccfa4fb16dee","bucket":"${AWS::AccountId}-demo-fr-sw-studydata","prefix":"studies/Organization/demo_study/"}]
             s3_mounts_str = '${S3Mounts}'
-            responseData['RDSSgId']='pass'
+            responseData['RDSSgId']='${SecurityGroup}'
             # if no study is attached, return empty bucket_name, prefix and policy
             if s3_mounts_str == '[]':
               responseData['bucket_name'] = ''
@@ -778,11 +781,8 @@ Resources:
                   - ec2:AuthorizeSecurityGroupIngress
                   - ec2:RevokeSecurityGroupIngress
                 Resource: 
-                  - !If 
-                    - !Equals [StudyBucketInfo.RdsSgId, 'pass']
-                    - !GetAtt SecurityGroup.GroupId
-                    - !GetAtt StudyBucketInfo.RdsSgId
-                  - !GetAtt SecurityGroup.GroupId
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${StudyBucketInfo.RdsSgId}
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${SecurityGroup}
                   
         
   AddSgRules:
@@ -797,7 +797,7 @@ Resources:
             print(event['RequestType'])
             responseData = {}
             rds_sg_id = '${StudyBucketInfo.RdsSgId}'
-            if rds_sg_id == '':
+            if rds_sg_id == '${SecurityGroup}':
               responseData = {}
               cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
               return
