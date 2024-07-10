@@ -814,20 +814,20 @@ Resources:
               try:
                 print("Revoking ingress rules")
                 
-                ec2.revoke_security_group_ingress(FromPort=3306, ToPort=3306, IpProtocol='tcp', GroupId=ws_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp', 
+                ec2.revoke_security_group_ingress(GroupId=ws_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp', 
                 'UserIdGroupPairs': [
                   {
                       'GroupId': rds_sg_id,
-                      'VpcId': ${VPC}
+                      'VpcId': '${VPC}'
                   }
-                }])
-                ec2.revoke_security_group_ingress(FromPort=3306, ToPort=3306, IpProtocol='tcp', GroupId=rds_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp', 
+                ]}])
+                ec2.revoke_security_group_ingress(GroupId=rds_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp', 
                 'UserIdGroupPairs': [
                   {
                       'GroupId': ws_sg_id,
-                      'VpcId': ${VPC}
+                      'VpcId': '${VPC}'
                   }
-                }])
+                ]}])
                 cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
                 return
               except Exception as e:
@@ -837,20 +837,20 @@ Resources:
                 return
             try:
               print("Authorizing ingress rules")
-              ec2.authorize_security_group_ingress(FromPort=3306, ToPort=3306, IpProtocol='tcp', GroupId=ws_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp', 
+              ec2.authorize_security_group_ingress(GroupId=ws_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp', 
               'UserIdGroupPairs': [
                 {
                     'GroupId': rds_sg_id,
-                    'VpcId': ${VPC}
+                    'VpcId': '${VPC}'
                 }
-              }])
-              ec2.authorize_security_group_ingress(FromPort=3306, ToPort=3306, IpProtocol='tcp', GroupId=rds_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp', 
+              ]}])
+              ec2.authorize_security_group_ingress(GroupId=rds_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp', 
               'UserIdGroupPairs': [
                 {
                     'GroupId': ws_sg_id,
-                    'VpcId': ${VPC}
+                    'VpcId': '${VPC}'
                 }
-              }])
+              ]}])
               cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
               return
             except Exception as e:
