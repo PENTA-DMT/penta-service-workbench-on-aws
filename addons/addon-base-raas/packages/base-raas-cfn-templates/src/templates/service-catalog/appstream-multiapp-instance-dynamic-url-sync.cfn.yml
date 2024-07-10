@@ -787,7 +787,7 @@ Resources:
                 Action: 
                   - ec2:DescribeSecurityGroups
                 Resource: 
-                  - arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group*
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/*
                   
         
   AddSgRules:
