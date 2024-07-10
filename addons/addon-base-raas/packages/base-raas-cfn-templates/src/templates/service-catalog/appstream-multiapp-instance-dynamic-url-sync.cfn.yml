@@ -783,6 +783,9 @@ Resources:
                 Resource: 
                   - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${StudyBucketInfo.RdsSgId}
                   - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${SecurityGroup}
+              - Effect: Allow
+                Action: ec2:DescribeSecurityGroups
+                Resource: arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/*
                   
         
   AddSgRules:
