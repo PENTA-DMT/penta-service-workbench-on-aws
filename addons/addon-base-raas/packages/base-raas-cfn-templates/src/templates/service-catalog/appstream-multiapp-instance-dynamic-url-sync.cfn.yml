@@ -27,8 +27,7 @@ Parameters:
     Default: 10.0.0.0/19
   S3Mounts:
     Type: String
-    Description:
-      A JSON array of objects with name, bucket, and prefix properties
+    Description: A JSON array of objects with name, bucket, and prefix properties
       used to mount data
   IamPolicyDocument:
     Type: String
@@ -105,22 +104,22 @@ Conditions:
   StudyAttached: !Not
     - !Equals
       - !Ref S3Mounts
-      - "[]"
+      - '[]'
   NoStudyAttached: !Equals
     - !Ref S3Mounts
-    - "[]"
+    - '[]'
 
 Resources:
   BasicLambdaRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Join
-        - "-"
+        - '-'
         - - !Ref Namespace
           - BasicLambdaRole
       Path: /
       AssumeRolePolicyDocument:
-        Version: "2012-10-17"
+        Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
@@ -132,11 +131,11 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
         - PolicyName: !Join
-            - "-"
+            - '-'
             - - !Ref Namespace
               - AccessCustomResourcePolicy
           PolicyDocument:
-            Version: "2012-10-17"
+            Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action: s3:*
@@ -182,7 +181,6 @@ Resources:
                 s3_mounts = json.loads(s3_mounts_str)
                 external_study_policy = '{"Version": "2012-10-17","Statement": ['
                 study_ids = [study["id"].split('-')[0] for study in s3_mounts]
-                
                 # find read only and readwrite external studies
                 read_studies = [study for study in s3_mounts if 'roleArn' in study.keys() and study['roleArn'] and not study['writeable']]
                 readwrite_studies = [study for study in s3_mounts if 'roleArn' in study.keys() and study['roleArn'] and study['writeable']]
@@ -239,7 +237,7 @@ Resources:
       RoleName: !Sub ${Namespace}CreateAppstreamScriptsAndApplicationsRole
       Path: /
       AssumeRolePolicyDocument:
-        Version: "2012-10-17"
+        Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
@@ -251,11 +249,11 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
         - PolicyName: !Join
-            - "-"
+            - '-'
             - - !Ref Namespace
               - lambda-access-study-buckets
           PolicyDocument:
-            Version: "2012-10-17"
+            Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action: s3:*
@@ -348,25 +346,25 @@ Resources:
                   print(f"Failed deleting app block {app_name} with exception {e}")
               cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
               return
-            
             responseData['application_arns'] = []
-            # copy dbeaver folder to namespace directory
-            resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix="DBeaverData")
-            for obj in resp['Contents']:
-              source = {
-                  'Bucket': repo_bucket,
-                  'Key': obj['Key']
-              }
-              s3_res.meta.client.copy(source, repo_bucket, f'${Namespace}/{obj["Key"]}')
-            # copy create_report scripts to namespace directory
-            resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix="create_report_scripts")
-            for obj in resp['Contents']:
-              source = {
-                  'Bucket': repo_bucket,
-                  'Key': obj['Key']
-              }
-              s3_res.meta.client.copy(source, repo_bucket, f'${Namespace}/{obj["Key"]}')
-            # set the correct results location for dbeaver to work
+            if 'dbeaver' app_names:
+              # copy dbeaver folder to namespace directory
+              resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix="DBeaverData")
+              for obj in resp['Contents']:
+                source = {
+                    'Bucket': repo_bucket,
+                    'Key': obj['Key']
+                }
+                s3_res.meta.client.copy(source, repo_bucket, f'${Namespace}/{obj["Key"]}')
+              # copy create_report scripts to namespace directory
+              resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix="create_report_scripts")
+              for obj in resp['Contents']:
+                source = {
+                    'Bucket': repo_bucket,
+                    'Key': obj['Key']
+                }
+                s3_res.meta.client.copy(source, repo_bucket, f'${Namespace}/{obj["Key"]}')
+            # set the correct results location for dbeaver to work with Athena
             # datasources_key = "${Namespace}/DBeaverData/workspace6/General/.dbeaver/data-sources.json"
             # try:
             #   resp = s3.get_object(Bucket=repo_bucket, Key=datasources_key)
@@ -441,6 +439,17 @@ Resources:
               cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
               return
             session_config = get_config_resp['Body'].read().decode('utf-8')
+            data = json.loads(session_config)
+            data_new = json.loads(session_config)
+            for s in ['SessionStart','SessionTermination']:
+              data_new[s]['executables'] = []
+              for x in data[s]['executables']:
+                  if 'sync' in x['filename']:
+                      for y in app_names:
+                          data_new[s]["executables"].append(x) if y in x["filename"] else None
+                  else:
+                      data_new[s]["executables"].append(x)
+            session_config = json.dumps(data_new)
             # create zip file
             zip_buffer = io.BytesIO()
             # Create a new zip file in memory
@@ -499,12 +508,12 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Join
-        - "-"
+        - '-'
         - - !Ref Namespace
           - FleetRole
       Path: /
       AssumeRolePolicyDocument:
-        Version: "2012-10-17"
+        Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
@@ -516,11 +525,11 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AmazonAppStreamServiceAccess
       Policies:
         - PolicyName: !Join
-            - "-"
+            - '-'
             - - !Ref Namespace
               - appstream-access-custom-resource
           PolicyDocument:
-            Version: "2012-10-17"
+            Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action: s3:*
@@ -549,7 +558,7 @@ Resources:
           PolicyDocument: !If
             - StudyAttached
             - !Ref IamPolicyDocument
-            - Version: "2012-10-17"
+            - Version: '2012-10-17'
               Statement:
                 - Effect: Allow
                   Action: s3:ListBucket
@@ -562,7 +571,7 @@ Resources:
           PolicyDocument: !If
             - StudyAttached
             - !GetAtt StudyBucketInfo.external_study_policy
-            - Version: "2012-10-17"
+            - Version: '2012-10-17'
               Statement:
                 - Effect: Allow
                   Action: s3:ListBucket
@@ -576,7 +585,7 @@ Resources:
     Type: AWS::AppStream::Fleet
     Properties:
       Name: !Join
-        - "-"
+        - '-'
         - - !Ref Namespace
           - appstream-fleet
       Description: Appstream elastic fleet
@@ -606,12 +615,12 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Join
-        - "-"
+        - '-'
         - - !Ref Namespace
           - AssociationFunctionRole
       Path: /
       AssumeRolePolicyDocument:
-        Version: "2012-10-17"
+        Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
@@ -624,11 +633,11 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
         - PolicyName: !Join
-            - "-"
+            - '-'
             - - !Ref Namespace
               - AssociationFunctionPolicy
           PolicyDocument:
-            Version: "2012-10-17"
+            Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
@@ -699,7 +708,7 @@ Resources:
     Type: AWS::AppStream::Stack
     Properties:
       Name: !Join
-        - "-"
+        - '-'
         - - !Ref Namespace
           - appstream-stack
       Description: Stack was created using CloudFormation
@@ -726,7 +735,7 @@ Resources:
     Properties:
       GroupDescription: EC2 workspace security group
       GroupName: !Join
-        - "-"
+        - '-'
         - - !Ref Namespace
           - workspace-sg
       SecurityGroupEgress:
@@ -742,7 +751,7 @@ Resources:
       Tags:
         - Key: Name
           Value: !Join
-            - "-"
+            - '-'
             - - !Ref Namespace
               - appstream-sg
         - Key: Description
@@ -753,12 +762,12 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Join
-        - "-"
+        - '-'
         - - !Ref Namespace
           - AddSgRulesRole
       Path: /
       AssumeRolePolicyDocument:
-        Version: "2012-10-17"
+        Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
@@ -770,26 +779,25 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
         - PolicyName: !Join
-            - "-"
+            - '-'
             - - !Ref Namespace
               - AddSgRulesPolicy
           PolicyDocument:
-            Version: "2012-10-17"
-            Statement: 
+            Version: '2012-10-17'
+            Statement:
               - Effect: Allow
                 Action:
                   - ec2:AuthorizeSecurityGroupIngress
                   - ec2:RevokeSecurityGroupIngress
-                Resource: 
+                Resource:
                   - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${StudyBucketInfo.RdsSgId}
                   - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${SecurityGroup}
               - Effect: Allow
-                Action: 
+                Action:
                   - ec2:DescribeSecurityGroups
-                Resource: 
-                  - "*"
-                  
-        
+                Resource:
+                  - '*'
+
   AddSgRules:
     Type: AWS::Lambda::Function
     Properties:
@@ -808,20 +816,18 @@ Resources:
               return
             ws_sg_id = '${SecurityGroup}'
             ws_sg_name = '${SecurityGroup.GroupName}'
-            
             rds_sg_name = ec2.describe_security_groups(GroupIds=[rds_sg_id])['SecurityGroups'][0]['GroupName']
             if event['RequestType']=='Delete':
               try:
                 print("Revoking ingress rules")
-                
-                ec2.revoke_security_group_ingress(GroupId=ws_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp', 
+                ec2.revoke_security_group_ingress(GroupId=ws_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp',
                 'UserIdGroupPairs': [
                   {
                       'GroupId': rds_sg_id,
                       'VpcId': '${VPC}'
                   }
                 ]}])
-                ec2.revoke_security_group_ingress(GroupId=rds_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp', 
+                ec2.revoke_security_group_ingress(GroupId=rds_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp',
                 'UserIdGroupPairs': [
                   {
                       'GroupId': ws_sg_id,
@@ -837,14 +843,14 @@ Resources:
                 return
             try:
               print("Authorizing ingress rules")
-              ec2.authorize_security_group_ingress(GroupId=ws_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp', 
+              ec2.authorize_security_group_ingress(GroupId=ws_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp',
               'UserIdGroupPairs': [
                 {
                     'GroupId': rds_sg_id,
                     'VpcId': '${VPC}'
                 }
               ]}])
-              ec2.authorize_security_group_ingress(GroupId=rds_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp', 
+              ec2.authorize_security_group_ingress(GroupId=rds_sg_id, IpPermissions=[{'FromPort':3306, 'ToPort':3306, 'IpProtocol': 'tcp',
               'UserIdGroupPairs': [
                 {
                     'GroupId': ws_sg_id,
@@ -872,12 +878,12 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Join
-        - "-"
+        - '-'
         - - !Ref Namespace
           - GetStreamingUrlRole
       Path: /
       AssumeRolePolicyDocument:
-        Version: "2012-10-17"
+        Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
@@ -890,11 +896,11 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
         - PolicyName: !Join
-            - "-"
+            - '-'
             - - !Ref Namespace
               - GetStreamingUrlPolicy
           PolicyDocument:
-            Version: "2012-10-17"
+            Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
@@ -948,7 +954,7 @@ Resources:
     Properties:
       FunctionName: !Ref GetStreamingUrl
       Action: lambda:InvokeFunctionUrl
-      Principal: "*"
+      Principal: '*'
       FunctionUrlAuthType: NONE
 
   FunctionUrl:
@@ -970,8 +976,7 @@ Outputs:
     Value: !GetAtt FunctionUrl.FunctionUrl
 
   NameSpace:
-    Description:
-      The namespace of resources created for the workspace. Useful for
+    Description: The namespace of resources created for the workspace. Useful for
       debugging purposes.
     Value: !Ref Namespace
 
