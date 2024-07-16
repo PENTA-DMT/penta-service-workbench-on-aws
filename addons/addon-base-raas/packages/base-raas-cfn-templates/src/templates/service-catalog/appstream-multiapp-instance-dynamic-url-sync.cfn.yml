@@ -347,7 +347,7 @@ Resources:
               cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
               return
             responseData['application_arns'] = []
-            if 'dbeaver' app_names:
+            if 'dbeaver' in app_names:
               # copy dbeaver folder to namespace directory
               resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix="DBeaverData")
               for obj in resp['Contents']:
