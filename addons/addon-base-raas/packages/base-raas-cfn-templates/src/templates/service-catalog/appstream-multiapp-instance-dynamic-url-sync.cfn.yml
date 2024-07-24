@@ -273,19 +273,19 @@ Resources:
                   - s3:ListBucket
                 Resource:
                   - arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86
-              - Effect: Allow
-                Action:
-                  - appstream:CreateApplication
-                  - appstream:CreateAppBlock
-                  - appstream:DescribeApplications
-                  - appstream:DescribeAppBlocks
-                  - appstream:UpdateApplication
-                  - appstream:UpdateAppBlock
-                  - appstream:DeleteApplication
-                  - appstream:DeleteAppBlock
-                Resource:
-                  - !Sub arn:aws:appstream:${AWS::Region}:${AWS::AccountId}:app-block/${Namespace}*
-                  - !Sub arn:aws:appstream:${AWS::Region}:${AWS::AccountId}:application/${Namespace}*
+              # - Effect: Allow
+              #   Action:
+              #     - appstream:CreateApplication
+              #     - appstream:CreateAppBlock
+              #     - appstream:DescribeApplications
+              #     - appstream:DescribeAppBlocks
+              #     - appstream:UpdateApplication
+              #     - appstream:UpdateAppBlock
+              #     - appstream:DeleteApplication
+              #     - appstream:DeleteAppBlock
+              #   Resource:
+              #     - !Sub arn:aws:appstream:${AWS::Region}:${AWS::AccountId}:app-block/${Namespace}*
+              #     - !Sub arn:aws:appstream:${AWS::Region}:${AWS::AccountId}:application/${Namespace}*
 
   CreateAppstreamScriptsAndApplications:
     DependsOn:
@@ -311,189 +311,117 @@ Resources:
             on workspace deletion:
               - deletes resources created in previous steps
             """
-            print(event['RequestType'])
-            study_attached = '${S3Mounts}' != '[]'
-            applications = '${AppStreamApplications}'.split(',')
-            responseData = {}
-            repo_bucket = 'appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86'
-            app_names = [name.lower() for name in applications]
-            repo_vhd_keys = [f'mount-{app_name}-vhd.sh' for app_name in app_names]
-            vhd_keys = [f"${Namespace}/{repo_vhd_key}" for repo_vhd_key in repo_vhd_keys]
-            # if study_attached:
-            #   print('studies attached')
-            app_names.append('studies')
-            repo_script_keys = [f'sync_s3_{app_name}_sessionscript.sh' for app_name in app_names]
-            repo_config_key = 'sync_multiapp_config.json'
-            zipfile_key = "${Namespace}/multiapp-session_scripts.zip"
-            # bucket_to_mount = repo_bucket
-            # key_prefix = "${StudyBucketInfo.prefix}"
-            # Check if the request is a delete event
-            if event['RequestType'] == 'Delete':
-              print('Deleting resources')
-              try:
-                bucket = s3_res.Bucket(repo_bucket)
-                bucket.objects.filter(Prefix="${Namespace}/").delete()
-              except Exception as e:
-                print(f"Failed deleting objects from {repo_bucket}/${Namespace}/ with exception {e}")
+              # print(event['RequestType'])
+              study_attached = '${S3Mounts}' != '[]'
+              applications = '${AppStreamApplications}'.split(',')
+              responseData = {}
+              repo_bucket = 'appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86'
+              app_names = [name.lower() for name in applications]
+              app_names.append('studies')
+              repo_script_keys = [f'sync_s3_{app_name}_sessionscript.sh' for app_name in app_names]
+              repo_config_key = 'sync_multiapp_config.json'
+              zipfile_key = "${Namespace}/multiapp-session_scripts.zip"
+              
+              if event['RequestType'] == 'Delete':
+                  print('Deleting resources')
+                  try:
+                      bucket = s3_res.Bucket(repo_bucket)
+                      bucket.objects.filter(Prefix="${Namespace}/").delete()
+                  except Exception as e:
+                      print(f"Failed deleting objects from {repo_bucket}/${Namespace}/ with exception {e}")
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+                  return
+              responseData['application_arns'] = []
               for app_name in applications:
-                try:
-                  appstream.delete_application(Name=f"${Namespace}{app_name}App")
-                except Exception as e:
-                  print(f"Failed deleting application {app_name} with exception {e}")
-                try:
-                  appstream.delete_app_block(Name=f"${Namespace}{app_name}AppBlock")
-                except Exception as e:
-                  print(f"Failed deleting app block {app_name} with exception {e}")
-              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+                  responseData["application_arns"].append(
+                      f"arn:aws:appstream:${AWS::Region}:${AWS::AccountId}:application/{app_name}Application"
+                  )
+                  
+              try:
+                  get_config_resp = s3.get_object(Bucket=repo_bucket, Key=repo_config_key)
+              except Exception as e:
+                  print(f"Failed getting object {repo_config_key} with exception {e}")
+                  cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
+                  return
+              session_config = get_config_resp["Body"].read().decode("utf-8")
+              data = json.loads(session_config)
+              data_new = json.loads(session_config)
+              for s in ["SessionStart", "SessionTermination"]:
+                  data_new[s]["executables"] = []
+                  for x in data[s]["executables"]:
+                      if "sync" in x["filename"]:
+                          for y in app_names:
+                              data_new[s]["executables"].append(x) if y in x["filename"] else None
+                      else:
+                          data_new[s]["executables"].append(x)
+              session_config = json.dumps(data_new)
+              # create zip file
+              zip_buffer = io.BytesIO()
+              # Create a new zip file in memory
+              with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+                  get_imgviewer = s3.get_object(
+                      Bucket=repo_bucket, Key="install_image_viewer_sessionscript.sh"
+                  )
+                  imgviewer_script = get_imgviewer["Body"].read().decode("utf-8")
+                  zipf.writestr("install_image_viewer_sessionscript.sh", imgviewer_script)
+                  for repo_script_key in repo_script_keys:
+                      try:
+                          get_script_resp = s3.get_object(Bucket=repo_bucket, Key=repo_script_key)
+                          session_script = get_script_resp["Body"].read().decode("utf-8")
+                          if "sync_s3_studies" in repo_script_key:
+                              # S3Mounts format example
+                              # [{"id":"demo_study","readable":true,"writeable":false,"kmsArn":"arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/07853676-9430-4c9b-b3b9-ccfa4fb16dee","bucket":"${AWS::AccountId}-demo-fr-sw-studydata","prefix":"studies/Organization/demo_study/"}]
+                              s3_mounts_str = "${S3Mounts}" if study_attached else ""
+                              session_script = session_script.replace("S3_MOUNTS", s3_mounts_str)
+                          if "dbeaver" in repo_script_key:
+                              session_script = session_script.replace(
+                                  "OBJECT_KEY", "${Namespace}/DBeaverData"
+                              )
+                              session_script = session_script.replace(
+                                  "NAMESPACE", "${Namespace}/create_report_scripts"
+                              )
+                          if "stata" in repo_script_key:
+                              session_script = session_script.replace(
+                                  "OBJECT_KEY", "${Namespace}/stata17"
+                              )
+                          if "rstudio" in repo_script_key:
+                              session_script = session_script.replace(
+                                  "NAMESPACE", "${Namespace}"
+                              )
+                          # Add the file to the zip archive
+                          zipf.writestr(repo_script_key, session_script)
+                      except s3.exceptions.NoSuchKey as e:
+                          print(e)
+                      except Exception as e:
+                          print(f"Failed getting {repo_script_key} with exception {e}")
+                  # Add the second file to the zip archive
+                  zipf.writestr("config.json", session_config)
+              # Reset the buffer to the beginning
+              zip_buffer.seek(0)
+              # Upload the file to S3
+              try:
+                  s3.put_object(
+                      Body=zip_buffer.read(),
+                      Bucket=repo_bucket,
+                      Key=zipfile_key,
+                      Tagging="AppStreamScript=SessionScript",
+                  )
+              except Exception as e:
+                  print(f"Failed putting object {zipfile_key} with exception {e}")
+                  cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
+                  return
+              responseData["zipfile_key"] = zipfile_key
+              responseData["bucket_name"] = repo_bucket
+              responseData["application_arns_str"] = json.dumps(responseData["application_arns"])
+              print(f"responseData: {responseData}")
+              cfnresponse.send(
+                  event,
+                  context,
+                  cfnresponse.SUCCESS,
+                  responseData,
+              )
               return
-            responseData['application_arns'] = []
-            if 'dbeaver' in app_names:
-              # copy dbeaver folder to namespace directory
-              resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix="DBeaverData")
-              for obj in resp['Contents']:
-                source = {
-                    'Bucket': repo_bucket,
-                    'Key': obj['Key']
-                }
-                s3_res.meta.client.copy(source, repo_bucket, f'${Namespace}/{obj["Key"]}')
-              # copy create_report scripts to namespace directory
-              resp = s3.list_objects_v2(Bucket=repo_bucket, Prefix="create_report_scripts")
-              for obj in resp['Contents']:
-                source = {
-                    'Bucket': repo_bucket,
-                    'Key': obj['Key']
-                }
-                s3_res.meta.client.copy(source, repo_bucket, f'${Namespace}/{obj["Key"]}')
-            # set the correct results location for dbeaver to work with Athena
-            # datasources_key = "${Namespace}/DBeaverData/workspace6/General/.dbeaver/data-sources.json"
-            # try:
-            #   resp = s3.get_object(Bucket=repo_bucket, Key=datasources_key)
-            # except Exception as e:
-            #   print(f"Failed getting object data-sources.json with exception {e}")
-            # data_sources = resp['Body'].read().decode('utf-8')
-            # data_sources = data_sources.replace("DATABASE_S3_LOCATION", f"{repo_bucket}/${Namespace}/athena-results")
-            # s3.put_object(Body=data_sources.encode('utf-8'), Bucket=repo_bucket, Key=datasources_key)
-            for repo_vhd_key, vhd_key, app_name in zip(repo_vhd_keys, vhd_keys, applications):
-              try:
-                get_vhd_resp = s3.get_object(Bucket=repo_bucket, Key=repo_vhd_key)
-              except Exception as e:
-                print(f"Failed getting object {repo_vhd_key} with exception {e}")
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
-                return
-              vhd_script = get_vhd_resp['Body'].read().decode('utf-8')
-              vhd_script = vhd_script.replace("AppBlockName", f"${Namespace}{app_name}AppBlock")
-              try:
-                s3.put_object(Body=vhd_script.encode('utf-8'), Bucket=repo_bucket, Key=vhd_key)
-              except Exception as e:
-                print(f"Failed putting object {vhd_key} with exception {e}")
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
-                return
-              print(f'creating {app_name} app block')
-              try:
-                app_block_resp = appstream.create_app_block(
-                  Name=f"${Namespace}{app_name}AppBlock",
-                  SourceS3Location={
-                    'S3Bucket':repo_bucket,
-                    'S3Key':f"{app_name.lower()}.tar.gz"
-                  },
-                  SetupScriptDetails={
-                    'ScriptS3Location': {
-                        'S3Bucket': repo_bucket,
-                        'S3Key': vhd_key
-                    },
-                    'ExecutablePath': '/usr/bin/bash',
-                    'ExecutableParameters': f'/opt/appstream/AppBlocks/${Namespace}{app_name}AppBlock/{repo_vhd_key}',
-                    'TimeoutInSeconds': 60
-                  },
-                  PackagingType='CUSTOM'
-                )
-              except Exception as e:
-                print(f"Failed creating app block {app_name} with exception {e}")
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
-                return
-              print(f'creating {app_name} application')
-              try:
-                application_resp = appstream.create_application(
-                  Name=f"${Namespace}{app_name}App",
-                  AppBlockArn=app_block_resp['AppBlock']['Arn'],
-                  Platforms=['AMAZON_LINUX2'],
-                  LaunchPath=f'/mnt/{"stata/app/stata17/xstata-se" if app_name=="Stata" else "dbeaver/app/dbeaver-ce/dbeaver" if app_name=="Dbeaver" else "libreoffice/app/LibreOffice-still.full-x86_64.AppImage" if app_name=="LibreOffice" else ""}',
-                  IconS3Location={
-                    'S3Bucket': repo_bucket,
-                    'S3Key': f'{app_name.lower()}.ico'
-                  },
-                  InstanceFamilies=[
-                    'GENERAL_PURPOSE',
-                  ],
-                )
-                responseData['application_arns'].append(application_resp['Application']['Arn'])
-              except Exception as e:
-                print(f"Failed creating application {app_name} with exception {e}")
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
-                return
-            # if study_attached:
-            try:
-              get_config_resp = s3.get_object(Bucket=repo_bucket, Key=repo_config_key)
-            except Exception as e:
-              print(f"Failed getting object {repo_config_key} with exception {e}")
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
-              return
-            session_config = get_config_resp['Body'].read().decode('utf-8')
-            data = json.loads(session_config)
-            data_new = json.loads(session_config)
-            for s in ['SessionStart','SessionTermination']:
-              data_new[s]['executables'] = []
-              for x in data[s]['executables']:
-                  if 'sync' in x['filename']:
-                      for y in app_names:
-                          data_new[s]["executables"].append(x) if y in x["filename"] else None
-                  else:
-                      data_new[s]["executables"].append(x)
-            session_config = json.dumps(data_new)
-            # create zip file
-            zip_buffer = io.BytesIO()
-            # Create a new zip file in memory
-            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
-              get_imgviewer = s3.get_object(Bucket=repo_bucket, Key='install_image_viewer_sessionscript.sh')
-              imgviewer_script = get_imgviewer['Body'].read().decode('utf-8')
-              zipf.writestr('install_image_viewer_sessionscript.sh', imgviewer_script)
-              for repo_script_key in repo_script_keys:
-                try:
-                  get_script_resp = s3.get_object(Bucket=repo_bucket, Key=repo_script_key)
-                  session_script = get_script_resp['Body'].read().decode('utf-8')
-                  if 'sync_s3_studies' in repo_script_key:
-                    # S3Mounts format example
-                    # [{"id":"demo_study","readable":true,"writeable":false,"kmsArn":"arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/07853676-9430-4c9b-b3b9-ccfa4fb16dee","bucket":"${AWS::AccountId}-demo-fr-sw-studydata","prefix":"studies/Organization/demo_study/"}]
-                    s3_mounts_str = '${S3Mounts}' if study_attached else ''
-                    session_script = session_script.replace("S3_MOUNTS", s3_mounts_str)
-                  if 'dbeaver' in repo_script_key:
-                    session_script = session_script.replace("OBJECT_KEY", f'${Namespace}/DBeaverData')
-                    session_script = session_script.replace("NAMESPACE", '${Namespace}/create_report_scripts')
-                  if 'stata' in repo_script_key:
-                    session_script = session_script.replace("OBJECT_KEY", f'${Namespace}/stata17')
-                  # Add the file to the zip archive
-                  zipf.writestr(repo_script_key, session_script)
-                except s3.exceptions.NoSuchKey as e:
-                  print(e)
-                except Exception as e:
-                  print(f"Failed getting {repo_script_key} with exception {e}")
-              # Add the second file to the zip archive
-              zipf.writestr('config.json', session_config)
-            # Reset the buffer to the beginning
-            zip_buffer.seek(0)
-            # Upload the file to S3
-            try:
-              s3.put_object(Body=zip_buffer.read(), Bucket=repo_bucket, Key=zipfile_key, Tagging="AppStreamScript=SessionScript")
-            except Exception as e:
-              print(f"Failed putting object {zipfile_key} with exception {e}")
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
-              return
-            responseData['zipfile_key'] = zipfile_key
-            responseData['bucket_name'] = repo_bucket
-            responseData['application_arns_str'] = json.dumps(responseData['application_arns'])
-            print(f'responseData: {responseData}')
-            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, )
-            return
+
       Role: !GetAtt CreateAppstreamScriptsAndApplicationsRole.Arn
       Runtime: python3.12
       Handler: index.lambda_handler
