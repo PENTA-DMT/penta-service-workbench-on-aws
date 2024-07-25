@@ -472,12 +472,22 @@ Resources:
                   - !Sub arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/${Namespace}/*
               - Effect: Allow
                 Action:
+                  - s3:GetObject
+                Resource:
+                  - arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/DBeaverData*
+                  - arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/R*
+                  - arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/create_report_scripts*
+              - Effect: Allow
+                Action:
                   - s3:ListBucket
                 Resource: arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86
                 Condition:
                   StringLike:
                     s3:prefix:
                       - !Sub ${Namespace}/*
+                      - DBeaverData
+                      - R
+                      - create_report_scripts
               - Effect: Allow
                 Action:
                   - s3:GetBucketLocation
