@@ -47,9 +47,9 @@ const productsToCreate = [
     },
     {
         filename: 'sagemaker-notebook-instance-v2',
-        displayName: 'SageMaker Notebook',
-        description: `An Amazon SageMaker Jupyter Notebook that comes with: \n* TensorFlow \n* Apache MXNet \n* Scikit-learn
-   and paramtrized notebook version that can be notebook-al2-v3 or notebook-al2023-v1`,
+        displayName: 'SageMaker Notebook V2',
+        description: `An Amazon SageMaker Jupyter Notebook that comes with: \n* Paramtrized notebook version that can be notebook-al2-v3 or notebook-al2023-v1 \n* TensorFlow \n* Apache MXNet \n* Scikit-learn
+    `,
     },
     {
         filename: 'emr-cluster',
