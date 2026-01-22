@@ -59,6 +59,10 @@ Parameters:
     Type: String
     Description: The version of the notebook to use
     AllowedValues: [notebook-al2-v3, notebook-al2023-v1]
+  NetworkInterface:
+    Type: String
+    Description: Eth port to use.
+    AllowedValues: [eth0, eth1, eth2]
 
 Conditions:
   IamPolicyEmpty: !Equals [!Ref IamPolicyDocument, '{}']
@@ -378,7 +382,7 @@ Resources:
               PREFIX_LIST_ID=$(aws --region $REGION ec2 describe-managed-prefix-lists --filters Name=owner-id,Values=AWS Name=prefix-list-name,Values=com.amazonaws.$REGION.s3 --query PrefixLists[0].PrefixListId --output text)
               PREFIXES=$(aws --region $REGION ec2 describe-prefix-lists --prefix-list-id $PREFIX_LIST_ID --query PrefixLists[0].Cidrs --output text)
             
-              IFACE=$(ip link show eth2 | grep ether | awk '{ print $2 }')
+              IFACE=$(ip link show ${NetworkInterface} | grep ether | awk '{ print $2 }')
               VPC_CIDR=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/network/interfaces/macs/$IFACE/vpc-ipv4-cidr-block)
               GATEWAY=$(ip route show | grep $VPC_CIDR | awk '{ print $3 }')
             
