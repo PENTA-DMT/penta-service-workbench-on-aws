@@ -165,7 +165,7 @@ Resources:
             responseData = {}
             # Check if the request is a delete event
             if event['RequestType'] == 'Delete':
-              if s3_mounts_str != '[]':
+              if '${S3Mounts}' != '[]':
                 boto3.client('iam').delete_policy(PolicyArn='arn:aws:iam::${AWS::AccountId}:policy/${Namespace}AppStreamAccessExternalStudyBucketsPolicy')
               cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
               return
