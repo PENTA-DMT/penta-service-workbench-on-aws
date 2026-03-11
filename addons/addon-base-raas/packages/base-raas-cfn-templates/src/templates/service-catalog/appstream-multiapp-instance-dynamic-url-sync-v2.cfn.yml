@@ -336,7 +336,7 @@ Resources:
                 return
             responseData['application_arns'] = []
             for app_name in applications:
-                if ${AppStreamPlatform} == 'UBUNTU_PRO_2404':
+                if "${AppStreamPlatform}" == 'UBUNTU_PRO_2404':
                   app_name = app_name + 'U'
                 responseData["application_arns"].append(
                     f"arn:aws:appstream:${AWS::Region}:${AWS::AccountId}:application/{app_name}Application"
