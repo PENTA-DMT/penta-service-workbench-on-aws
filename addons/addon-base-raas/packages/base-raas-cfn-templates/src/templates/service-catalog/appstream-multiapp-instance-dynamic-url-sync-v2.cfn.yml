@@ -151,6 +151,12 @@ Resources:
               - Effect: Allow
                 Action: rds:DescribeDbClusters
                 Resource: !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster:renal-serverless-db-test
+              - Effect: Allow
+                Action: iam:DeletePolicy
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:policy/${Namespace}AppStreamAccessExternalStudyBucketsPolicy
+              - Effect: Allow
+                Action: iam:CreatePolicy
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:policy/${Namespace}AppStreamAccessExternalStudyBucketsPolicy
 
   GetStudyInfo:
     Type: AWS::Lambda::Function
