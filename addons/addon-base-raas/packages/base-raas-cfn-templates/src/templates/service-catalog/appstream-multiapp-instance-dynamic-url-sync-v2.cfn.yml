@@ -54,7 +54,13 @@ Parameters:
     Description: Applications to deploy. Names must be consistent with AppBlock
       names and Scripts names.
     Type: String
-    Default: Stata,DBeaver,LibreOffice,RStudio
+    Default: Stata,LibreOffice,RStudio
+  AppStreamPlatform:
+    Description: AppStream Platform
+    Type: String
+    AllowedValues:
+      - AMAZON_LINUX2
+      - UBUNTU_PRO_2404
   ClipboardCopyFromLocalDevice:
     Description: Appstream Stack Parameter
     Type: String
@@ -159,6 +165,8 @@ Resources:
             responseData = {}
             # Check if the request is a delete event
             if event['RequestType'] == 'Delete':
+              if s3_mounts_str != '[]':
+                boto3.client('iam').delete_policy(PolicyArn='arn:aws:iam::${AWS::AccountId}:policy/${Namespace}AppStreamAccessExternalStudyBucketsPolicy')
               cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
               return
             # S3Mounts format example
@@ -169,15 +177,15 @@ Resources:
             if s3_mounts_str == '[]':
               responseData['bucket_name'] = ''
               responseData['prefix'] = ''
-              responseData['external_study_policy'] = ''
+              responseData['external_study_policy_arn'] = ''
               cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
               return
             else:
               try:
-                if 'EPPICC' in s3_mounts_str:
-                  rds = boto3.client('rds')
-                  resp=rds.describe_db_clusters(DBClusterIdentifier='renal-serverless-db-test')
-                  responseData['RdsSgId'] = resp['DBClusters'][0]['VpcSecurityGroups'][0]['VpcSecurityGroupId']
+                # if 'EPPICC' in s3_mounts_str:
+                #   rds = boto3.client('rds')
+                #   resp=rds.describe_db_clusters(DBClusterIdentifier='renal-serverless-db-test')
+                #   responseData['RdsSgId'] = resp['DBClusters'][0]['VpcSecurityGroups'][0]['VpcSecurityGroupId']
                 s3_mounts = json.loads(s3_mounts_str)
                 external_study_policy = '{"Version": "2012-10-17","Statement": ['
                 study_ids = [study["id"].split('-')[0] for study in s3_mounts]
@@ -209,11 +217,19 @@ Resources:
                   external_study_policy += f',{{"Sid": "AllowAccessFromVPCEndpoint","Effect": "Deny", "Action": ["s3:Get*","s3:List*","s3:Put*","s3:Delete*","s3:AbortMultipartUpload","s3:ListMultipartUploadParts"], "Resource": [{resources}], "Condition": {{"StringNotEquals": {{"aws:SourceVpce": "{vpc_endpoint}"}},"StringLike": {{"s3:prefix": [{prefixes}]}}}}}}]}}'
                 else:
                   external_study_policy += '{"Effect": "Allow", "Action":"s3:ListBucket", "Resource":"arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86"}]}'
+                
+                # create a policy for appstream fleet to access external studies
+                policy_response = boto3.client('iam').create_policy(
+                    PolicyName='${Namespace}AppStreamAccessExternalStudyBucketsPolicy',
+                    PolicyDocument=external_study_policy
+                )
+                external_study_policy_arn = policy_response['Policy']['Arn']
+
                 study_bucket_name = s3_mounts[0]['bucket']
                 study_bucket_prefix = s3_mounts[0]['prefix']
                 responseData['bucket_name'] = study_bucket_name
                 responseData['prefix'] = study_bucket_prefix
-                responseData['external_study_policy'] = external_study_policy
+                responseData['external_study_policy_arn'] = external_study_policy_arn
                 print(f"{responseData}")
                 cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
                 return
@@ -320,6 +336,8 @@ Resources:
                 return
             responseData['application_arns'] = []
             for app_name in applications:
+                if ${AppStreamPlatform} == 'UBUNTU_PRO_2404':
+                  app_name = app_name + 'U'
                 responseData["application_arns"].append(
                     f"arn:aws:appstream:${AWS::Region}:${AWS::AccountId}:application/{app_name}Application"
                 )
@@ -346,11 +364,11 @@ Resources:
             zip_buffer = io.BytesIO()
             # Create a new zip file in memory
             with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-                get_imgviewer = s3.get_object(
-                    Bucket=repo_bucket, Key="install_image_viewer_sessionscript.sh"
-                )
-                imgviewer_script = get_imgviewer["Body"].read().decode("utf-8")
-                zipf.writestr("install_image_viewer_sessionscript.sh", imgviewer_script)
+                # get_imgviewer = s3.get_object(
+                #     Bucket=repo_bucket, Key="install_image_viewer_sessionscript.sh"
+                # )
+                # imgviewer_script = get_imgviewer["Body"].read().decode("utf-8")
+                # zipf.writestr("install_image_viewer_sessionscript.sh", imgviewer_script)
                 for repo_script_key in repo_script_keys:
                     try:
                         get_script_resp = s3.get_object(Bucket=repo_bucket, Key=repo_script_key)
@@ -360,13 +378,13 @@ Resources:
                             # [{"id":"demo_study","readable":true,"writeable":false,"kmsArn":"arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/07853676-9430-4c9b-b3b9-ccfa4fb16dee","bucket":"${AWS::AccountId}-demo-fr-sw-studydata","prefix":"studies/Organization/demo_study/"}]
                             s3_mounts_str = '${S3Mounts}' if study_attached else ""
                             session_script = session_script.replace("S3_MOUNTS", s3_mounts_str)
-                        if "dbeaver" in repo_script_key:
-                            session_script = session_script.replace(
-                                "OBJECT_KEY", "${Namespace}/DBeaverData"
-                            )
-                            session_script = session_script.replace(
-                                "NAMESPACE", "${Namespace}/create_report_scripts"
-                            )
+                        # if "dbeaver" in repo_script_key:
+                        #     session_script = session_script.replace(
+                        #         "OBJECT_KEY", "${Namespace}/DBeaverData"
+                        #     )
+                        #     session_script = session_script.replace(
+                        #         "NAMESPACE", "${Namespace}/create_report_scripts"
+                        #     )
                         if "stata" in repo_script_key:
                             session_script = session_script.replace(
                                 "OBJECT_KEY", "${Namespace}/stata17"
@@ -438,6 +456,10 @@ Resources:
               - sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonAppStreamServiceAccess
+        - !If
+          - StudyAttached
+          - !GetAtt StudyBucketInfo.external_study_policy_arn
+          - !Ref AWS::NoValue
       Policies:
         - PolicyName: !Join
             - '-'
@@ -461,9 +483,9 @@ Resources:
                 Action:
                   - s3:GetObject
                 Resource:
-                  - arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/DBeaverData*
+                  # - arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/DBeaverData*
                   - arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/R*
-                  - arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/create_report_scripts*
+                  # - arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86/create_report_scripts*
               - Effect: Allow
                 Action:
                   - s3:ListBucket
@@ -472,9 +494,9 @@ Resources:
                   StringLike:
                     s3:prefix:
                       - !Sub ${Namespace}/*
-                      - DBeaverData
+                      # - DBeaverData
                       - R
-                      - create_report_scripts
+                      # - create_report_scripts
               - Effect: Allow
                 Action:
                   - s3:GetBucketLocation
@@ -492,19 +514,19 @@ Resources:
                     StringLike:
                       s3:prefix:
                         - !Sub ${Namespace}/*
-        - PolicyName: !Sub ${Namespace}-appstream-access-external-study-buckets
-          PolicyDocument: !If
-            - StudyAttached
-            - !GetAtt StudyBucketInfo.external_study_policy
-            - Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action: s3:ListBucket
-                  Resource: arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86
-                  Condition:
-                    StringLike:
-                      s3:prefix:
-                        - !Sub ${Namespace}/*
+        # - PolicyName: !Sub ${Namespace}-appstream-access-external-study-buckets
+        #   PolicyDocument: !If
+        #     - StudyAttached
+        #     - !GetAtt StudyBucketInfo.external_study_policy
+        #     - Version: '2012-10-17'
+        #       Statement:
+        #         - Effect: Allow
+        #           Action: s3:ListBucket
+        #           Resource: arn:aws:s3:::appstream-appblocks-4a8a77da-879d-4253-aaa3-ad0a492b8d86
+        #           Condition:
+        #             StringLike:
+        #               s3:prefix:
+        #                 - !Sub ${Namespace}/*
 
   AppStreamFleet:
     Type: AWS::AppStream::Fleet
@@ -517,7 +539,7 @@ Resources:
       DisplayName: Fleet created in CloudFormation
       IamRoleArn: !GetAtt FleetRole.Arn
       InstanceType: !Ref StreamInstanceType
-      Platform: AMAZON_LINUX2
+      Platform: !Ref AppStreamPlatform
       FleetType: ELASTIC
       VpcConfig:
         SubnetIds:

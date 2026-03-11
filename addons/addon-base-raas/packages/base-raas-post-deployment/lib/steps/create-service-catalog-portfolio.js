@@ -81,6 +81,11 @@ const productsToCreate = [
         filename: 'appstream-multiapp-instance-dynamic-url-sync',
         displayName: 'Multiapp dynamic url and s3 sync version',
         description: 'AppStream2.0 Elastic App with Multi Apps'
+    },
+    {
+        filename: 'appstream-multiapp-instance-dynamic-url-sync-v2',
+        displayName: 'Ubuntu-based Multiapp dynamic url and s3 sync version',
+        description: 'Ubuntu-based AppStream2.0 Elastic App with Multi Apps'
     }//,
     // {
     //   filename: 'appstream-sata-instance-external-lambda-dev',
