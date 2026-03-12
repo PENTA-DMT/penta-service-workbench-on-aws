@@ -329,7 +329,7 @@ Resources:
             app_names.append('studies')
             repo_script_keys = [f'sync_s3_{app_name}_sessionscript.sh' for app_name in app_names]
             if "${AppStreamPlatform}" == 'UBUNTU_PRO_2404':
-              repo_script_keys = [key.replace('rstudio', 'rstudio_u') for key in repo_script_keys if 'rstudio' in key]
+              repo_script_keys = [key.replace('rstudio', 'rstudio_u') if 'rstudio' in key else key for key in repo_script_keys]
             print(f"repo_script_keys: {repo_script_keys}")
             repo_config_key = 'sync_multiapp_config.json' if "${AppStreamPlatform}" != 'UBUNTU_PRO_2404' else 'sync_multiapp_config_u.json'
             print(f"repo_config_key: {repo_config_key}")
