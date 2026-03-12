@@ -399,6 +399,15 @@ Resources:
                             session_script = session_script.replace(
                                 "NAMESPACE", "${Namespace}"
                             )
+                            if "${AppStreamPlatform}" == 'UBUNTU_PRO_2404':
+                                session_script = session_script.replace(
+                                    """aws s3 cp s3://$BUCKET_NAME/R.tar.gz $LOCAL_DIR --profile appstream_machine_role --quiet
+                tar xzf R.tar.gz
+                rm R.tar.gz""", 
+                                    """aws s3 cp s3://$BUCKET_NAME/R_u.tar.gz $LOCAL_DIR --profile appstream_machine_role --quiet
+                tar xzf R_u.tar.gz
+                rm R_u.tar.gz"""
+                                )
                         # Add the file to the zip archive
                         zipf.writestr(repo_script_key, session_script)
                     except s3.exceptions.NoSuchKey as e:
