@@ -328,6 +328,8 @@ Resources:
             app_names = [name.lower() for name in applications]
             app_names.append('studies')
             repo_script_keys = [f'sync_s3_{app_name}_sessionscript.sh' for app_name in app_names]
+            if "${AppStreamPlatform}" == 'UBUNTU_PRO_2404':
+              repo_script_keys = [key.replace('rstudio', 'rstudio_u') for key in repo_script_keys if 'rstudio' in key]
             repo_config_key = 'sync_multiapp_config.json'
             zipfile_key = "${Namespace}/multiapp-session_scripts.zip"
             
@@ -399,15 +401,6 @@ Resources:
                             session_script = session_script.replace(
                                 "NAMESPACE", "${Namespace}"
                             )
-                            if "${AppStreamPlatform}" == 'UBUNTU_PRO_2404':
-                                session_script = session_script.replace(
-                                    """aws s3 cp s3://$BUCKET_NAME/R.tar.gz $LOCAL_DIR --profile appstream_machine_role --quiet
-                tar xzf R.tar.gz
-                rm R.tar.gz""", 
-                                    """aws s3 cp s3://$BUCKET_NAME/R_u.tar.gz $LOCAL_DIR --profile appstream_machine_role --quiet
-                tar xzf R_u.tar.gz
-                rm R_u.tar.gz"""
-                                )
                         # Add the file to the zip archive
                         zipf.writestr(repo_script_key, session_script)
                     except s3.exceptions.NoSuchKey as e:
