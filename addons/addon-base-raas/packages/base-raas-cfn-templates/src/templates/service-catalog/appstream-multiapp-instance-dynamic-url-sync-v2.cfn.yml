@@ -330,7 +330,7 @@ Resources:
             repo_script_keys = [f'sync_s3_{app_name}_sessionscript.sh' for app_name in app_names]
             if "${AppStreamPlatform}" == 'UBUNTU_PRO_2404':
               repo_script_keys = [key.replace('rstudio', 'rstudio_u') for key in repo_script_keys if 'rstudio' in key]
-            repo_config_key = 'sync_multiapp_config.json'
+            repo_config_key = 'sync_multiapp_config.json' if "${AppStreamPlatform}" != 'UBUNTU_PRO_2404' else 'sync_multiapp_config_u.json'
             zipfile_key = "${Namespace}/multiapp-session_scripts.zip"
             
             if event['RequestType'] == 'Delete':
