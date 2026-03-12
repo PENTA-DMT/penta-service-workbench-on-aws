@@ -330,7 +330,9 @@ Resources:
             repo_script_keys = [f'sync_s3_{app_name}_sessionscript.sh' for app_name in app_names]
             if "${AppStreamPlatform}" == 'UBUNTU_PRO_2404':
               repo_script_keys = [key.replace('rstudio', 'rstudio_u') for key in repo_script_keys if 'rstudio' in key]
+            print(f"repo_script_keys: {repo_script_keys}")
             repo_config_key = 'sync_multiapp_config.json' if "${AppStreamPlatform}" != 'UBUNTU_PRO_2404' else 'sync_multiapp_config_u.json'
+            print(f"repo_config_key: {repo_config_key}")
             zipfile_key = "${Namespace}/multiapp-session_scripts.zip"
             
             if event['RequestType'] == 'Delete':
@@ -379,6 +381,7 @@ Resources:
                 # zipf.writestr("install_image_viewer_sessionscript.sh", imgviewer_script)
                 for repo_script_key in repo_script_keys:
                     try:
+                        print(f"Getting {repo_script_key} from bucket {repo_bucket}")
                         get_script_resp = s3.get_object(Bucket=repo_bucket, Key=repo_script_key)
                         session_script = get_script_resp["Body"].read().decode("utf-8")
                         if "sync_s3_studies" in repo_script_key:
@@ -386,6 +389,7 @@ Resources:
                             # [{"id":"demo_study","readable":true,"writeable":false,"kmsArn":"arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/07853676-9430-4c9b-b3b9-ccfa4fb16dee","bucket":"${AWS::AccountId}-demo-fr-sw-studydata","prefix":"studies/Organization/demo_study/"}]
                             s3_mounts_str = '${S3Mounts}' if study_attached else ""
                             session_script = session_script.replace("S3_MOUNTS", s3_mounts_str)
+                            print(f"{repo_script_key} updated}")
                         # if "dbeaver" in repo_script_key:
                         #     session_script = session_script.replace(
                         #         "OBJECT_KEY", "${Namespace}/DBeaverData"
@@ -402,12 +406,14 @@ Resources:
                                 "NAMESPACE", "${Namespace}"
                             )
                         # Add the file to the zip archive
+                        print(f"Adding {repo_script_key} to zip file")
                         zipf.writestr(repo_script_key, session_script)
                     except s3.exceptions.NoSuchKey as e:
                         print(e)
                     except Exception as e:
                         print(f"Failed getting {repo_script_key} with exception {e}")
                 # Add the second file to the zip archive
+                print(f"Adding config.json to zip file")
                 zipf.writestr("config.json", session_config)
             # Reset the buffer to the beginning
             zip_buffer.seek(0)
