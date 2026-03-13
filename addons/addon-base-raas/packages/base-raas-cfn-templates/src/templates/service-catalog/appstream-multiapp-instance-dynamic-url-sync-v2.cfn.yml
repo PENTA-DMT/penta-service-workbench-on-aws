@@ -374,11 +374,11 @@ Resources:
             zip_buffer = io.BytesIO()
             # Create a new zip file in memory
             with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-                # get_imgviewer = s3.get_object(
-                #     Bucket=repo_bucket, Key="install_image_viewer_sessionscript.sh"
-                # )
-                # imgviewer_script = get_imgviewer["Body"].read().decode("utf-8")
-                # zipf.writestr("install_image_viewer_sessionscript.sh", imgviewer_script)
+                get_filemanager = s3.get_object(
+                    Bucket=repo_bucket, Key="install_filemanager.sh"
+                )
+                filemanager_script = get_filemanager["Body"].read().decode("utf-8")
+                zipf.writestr("install_filemanager.sh", filemanager_script)
                 for repo_script_key in repo_script_keys:
                     try:
                         print(f"Getting {repo_script_key} from bucket {repo_bucket}")
