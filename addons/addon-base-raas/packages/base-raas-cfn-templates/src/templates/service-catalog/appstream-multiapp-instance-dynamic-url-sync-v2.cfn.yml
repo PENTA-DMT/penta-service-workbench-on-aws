@@ -510,8 +510,9 @@ Resources:
                   StringLike:
                     s3:prefix:
                       - !Sub ${Namespace}/*
-                      # - DBeaverData
                       - R
+                      - s3rm
+                      - s3sync
                       # - create_report_scripts
               - Effect: Allow
                 Action:
